@@ -13,8 +13,7 @@ from scipy.linalg import expm
 
 class MyDataset(Dataset):
     def __init__(self, root: str, desti: str, market: str, comlist: List[str], start: str, end: str, window: int, dataset_type: str, fast_approx):
-        super().__init()
-
+        super().__init__()
         self.comlist = comlist
         self.market = market
         self.root = root
@@ -129,7 +128,7 @@ class MyDataset(Dataset):
             df = pd.read_csv(d_path, parse_dates=[0], index_col=0)
             df.index = df.index.astype(str).str.split(" ").str[0]
             df.index = pd.to_datetime(df.index)
-            df = df[df.index.isin(dates_dt)]
+            df = df[df.index.isin(pd.to_datetime(dates_dt))]
             df_T = df.transpose()
             df_selected = df_T.iloc[0:5]
             X[:, idx, :] = torch.from_numpy(df_selected.to_numpy())
