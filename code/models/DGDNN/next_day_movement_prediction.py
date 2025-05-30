@@ -1,17 +1,20 @@
 import torch
 import torch.nn.functional as F
-from dataset_gen import Mydataset
-from dgdnn import DGDNN
+from Data.dataset_gen import MyDataset
+from Model.dgdnn import DGDNN
 from torch_geometric.logging import log
 import torch.distributions
 import numpy as np
 import matplotlib.pyplot as plt
 import random
+import csv
 from matplotlib import cm
 from matplotlib import axes
 import seaborn as sns
 import sklearn.preprocessing as skp
 from sklearn.metrics import matthews_corrcoef, f1_score
+
+
 
 # Configure the device for running the model on GPU or CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -25,13 +28,22 @@ dataset_type = ['Train', 'Validation', 'Test']
 com_path = ['/content/drive/MyDrive/Raw_Data/Stock_Markets/NYSE_NASDAQ/NASDAQ.csv',
             '/content/drive/MyDrive/Raw_Data/Stock_Markets/NYSE_NASDAQ/NYSE.csv',
             '/content/drive/MyDrive/Raw_Data/Stock_Markets/NYSE_NASDAQ/NYSE_missing.csv']
+com_path = ['/Users/mirco/Documents/Tesi/code/data/datasets/NASDAQ.csv',
+            '/Users/mirco/Documents/Tesi/code/data/datasets/NYSE.csv',
+            '/Users/mirco/Documents/Tesi/code/data/datasets/NYSE_missing.csv'
+            ]
+
 des = '/content/drive/MyDrive/Raw_Data/Stock_Markets/NYSE_NASDAQ/raw_stock_data/stocks_indicators/data'
+des = "/Users/mirco/Documents/Tesi/code/data/datasets/graph/NASDAQ_train_2010-01-01_2015-12-31_30"
 directory = "/content/drive/MyDrive/Raw_Data/Stock_Markets/NYSE_NASDAQ/raw_stock_data/stocks_indicators/data/google_finance"
+directory = "/Users/mirco/Documents/Tesi/code/data/datasets/America_Stocks"
 
 NASDAQ_com_list = []
 NYSE_com_list = []
 NYSE_missing_list = []
 com_list = [NASDAQ_com_list, NYSE_com_list, NYSE_missing_list]
+
+print("-" * 5, "Building datasets..." , "-"*5)
 for idx, path in enumerate(com_path):
     with open(path) as f:
         file = csv.reader(f)
@@ -44,7 +56,7 @@ train_dataset = MyDataset(directory, des, market[0], NASDAQ_com_list, sedate[0],
 validation_dataset = MyDataset(directory, des, market[0], NASDAQ_com_list, val_sedate[0], val_sedate[1], 19, dataset_type[1], fast_approx)
 test_dataset = MyDataset(directory, des, market[0], NASDAQ_com_list, test_sedate[0], test_sedate[1], 19, dataset_type[2], fast_approx)
 
-
+print("-" * 5, "Defining the model..." , "-"*5)
 # Define model
 layers, num_nodes, expansion_step, num_heads, active, timestamp, classes = 6, 1026, 7, 2, [True, False, False, False, False, False], 19, 2
 diffusion_size = [5*timestamp, 31*timestamp, 28*timestamp, 24*timestamp, 20*timestamp, 16*timestamp, 12*timestamp]
