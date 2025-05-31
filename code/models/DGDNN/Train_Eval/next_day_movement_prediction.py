@@ -1,7 +1,5 @@
 import torch
 import torch.nn.functional as F
-from Data.dataset_gen import MyDataset
-from Model.dgdnn import DGDNN
 from torch_geometric.logging import log
 import torch.distributions
 import numpy as np
@@ -13,8 +11,17 @@ from matplotlib import axes
 import seaborn as sns
 import sklearn.preprocessing as skp
 from sklearn.metrics import matthews_corrcoef, f1_score
+import os 
+import sys
 
-
+model_path = os.path.abspath('/Users/mirco/Documents/Tesi/code/models/DGDNN/Model')
+data_path = os.path.abspath('/Users/mirco/Documents/Tesi/code/models/DGDNN/Data')
+if model_path not in sys.path:
+    sys.path.insert(0, model_path)
+if data_path not in sys.path:
+    sys.path.insert(0, data_path)
+from dataset_gen import MyDataset
+from dgdnn import DGDNN
 
 # Configure the device for running the model on GPU or CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

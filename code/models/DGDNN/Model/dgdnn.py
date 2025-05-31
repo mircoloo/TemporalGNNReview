@@ -1,14 +1,10 @@
 import torch
 import torch.nn as nn
-try:
-    import torch.nn.functional as F
-    from models.DGDNN.Model.GGD import GeneralizedGraphDiffusion
-    from models.DGDNN.Model.CatAttn import CatMultiAttn
-    from GGD import GeneralizedGraphDiffusion
-    from CatAttn import CatMultiAttn
 
-except(Exception):
-    print()
+import torch.nn.functional as F
+from GGD import GeneralizedGraphDiffusion
+from CatAttn import CatMultiAttn
+
 
 class DGDNN(nn.Module):
     def __init__(self, diffusion_size, embedding_size, classes,
