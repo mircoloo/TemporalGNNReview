@@ -47,6 +47,9 @@ class MyDataset(Dataset):
             raise FileNotFoundError(f"No graph data found for index {idx}")
 
     def check_years(self, date_str: str, start_str: str, end_str: str) -> bool:
+        """
+        Check if the provided dates are cronologically corrects
+        """
         date_format = "%Y-%m-%d"
         date = datetime.strptime(date_str, date_format)
         start = datetime.strptime(start_str, date_format)
@@ -59,7 +62,7 @@ class MyDataset(Dataset):
         after_end_date_sets = []
 
         for h in comlist: #for each company in company_list 
-            dates = set()
+            dates = set() 
             after_end_dates = set()
             d_path = os.path.join(path, f'{market}_{h}_30Y.csv') #get the path of the csv files 
 
@@ -68,19 +71,23 @@ class MyDataset(Dataset):
                 next(file, None)  # Skip the header row 
                 for line in file:
                     date_str = line[0][:10]
-
                     if self.check_years(date_str, start, end): #if the date is between start << date_str << end
                         dates.add(date_str)
-                    elif self.check_years(date_str, end, '2017-12-31'):  # '2017-12-31' is just an example, replacing with the latest date when datasets change
+                        
+                    elif self.check_years(date_str, end, '2019-12-31'):  # '2017-12-31' is just an example, replacing with the latest date when datasets change
                         after_end_dates.add(date_str)
-
+                
+            if ( len(dates) == 0):
+                print(f"for stock {h} there are no dates in range")
+            if ( len(after_end_dates) == 0 ):
+                print(f"for stock {h} there are no after_end_dates in range")
             date_sets.append(dates)
             after_end_date_sets.append(after_end_dates)
-
+        # So for each company take the dates and the after_end_dates and add to the sets
         all_dates = list(set.intersection(*date_sets))
         all_after_end_dates = list(set.intersection(*after_end_date_sets))
         next_common_day = min(all_after_end_dates) if all_after_end_dates else None
-
+        print(max(all_dates), min(all_after_end_dates))
         return sorted(all_dates), next_common_day
 
     def signal_energy(self, x_tuple: Tuple[float]) -> float:
