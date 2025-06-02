@@ -11,10 +11,10 @@ class GeneralizedGraphDiffusion(torch.nn.Module):
 
     def forward(self, theta, t, x, a):
         q = 0
-        for i in range(theta.shape[0]):
+        for i in range(theta.shape[0]): # for each layer
             q += theta[i] * t[i]
         
-        x = self.fc((q * a) @ x)
+        x = self.fc((q * a) @ x) #diffusion step
         if self.active:
             x = self.activation0(x)
 

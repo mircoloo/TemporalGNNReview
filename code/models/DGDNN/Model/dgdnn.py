@@ -9,6 +9,7 @@ from CatAttn import CatMultiAttn
 class DGDNN(nn.Module):
     def __init__(self, diffusion_size, embedding_size, classes,
                  layers, num_nodes, expansion_step, num_heads, active, timestamp):
+        assert len(embedding_size) == 2*layers, f"len of emb_size must have 2* the num_layers, current len_emb_size:{len(embedding_size)} instead of {layers*2}"
         super().__init__()
 
         # Allocate transition params
@@ -23,7 +24,7 @@ class DGDNN(nn.Module):
             [GeneralizedGraphDiffusion(diffusion_size[i],
                                        diffusion_size[i + 1],
                                        active[i])
-             for i in range(len(diffusion_size) - 1)]
+             for i in range(len(diffusion_size) - 1)]  ## Various leayers of graph diffusions
         )
         self.cat_attn_layers = nn.ModuleList(
             [CatMultiAttn(embedding_size[2 * i],
@@ -31,7 +32,7 @@ class DGDNN(nn.Module):
                           embedding_size[2 * i + 1],
                           active[i],
                           timestamp)
-             for i in range(len(embedding_size) // 2)]
+             for i in range(len(embedding_size) // 2)] ## List of CatMultiAttn, each for each layer
         )
         self.linear = nn.Linear(embedding_size[-1] * timestamp, classes)
 
@@ -45,13 +46,14 @@ class DGDNN(nn.Module):
         nn.init.constant_(self.theta, 1.0 / self.theta.size(-1))
 
     def forward(self, X, A):
-        z, h = X, X
+        z, h = X, X #h output of CatAtnn and z output of the diffusion mechanism
         # Optionally constrain theta to be non-negative or sum-to-one:
         theta_pos  = F.softplus(self.theta)             # >= 0
         theta_prob = F.softmax(self.theta, dim=-1)      # sum-to-1
 
+    
+
         for l in range(self.T.shape[0]):
-            # pick whichever makes sense for your diffusion layer:
             z = self.diffusion_layers[l](theta_pos[l], self.T[l], z, A)
             h = self.cat_attn_layers[l](z, h)
 

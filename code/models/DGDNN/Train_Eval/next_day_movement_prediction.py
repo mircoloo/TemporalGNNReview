@@ -13,6 +13,7 @@ import sklearn.preprocessing as skp
 from sklearn.metrics import matthews_corrcoef, f1_score
 import os 
 import sys
+from utils import theta_regularizer, neighbor_distance_regularizer
 
 model_path = os.path.abspath('/Users/mirco/Documents/Tesi/code/models/DGDNN/Model')
 data_path = os.path.abspath('/Users/mirco/Documents/Tesi/code/models/DGDNN/Data')
@@ -20,6 +21,7 @@ if model_path not in sys.path:
     sys.path.insert(0, model_path)
 if data_path not in sys.path:
     sys.path.insert(0, data_path)
+
 from dataset_gen import MyDataset
 from dgdnn import DGDNN
 
@@ -41,58 +43,64 @@ com_path = ['/Users/mirco/Documents/Tesi/code/data/datasets/NASDAQ.csv',
             ]
 
 des = '/content/drive/MyDrive/Raw_Data/Stock_Markets/NYSE_NASDAQ/raw_stock_data/stocks_indicators/data'
-des = "/Users/mirco/Documents/Tesi/code/data/datasets/graph/NASDAQ_train_2010-01-01_2015-12-31_30"
+des = "/Users/mirco/Documents/Tesi/code/data/datasets/graph"
 directory = "/content/drive/MyDrive/Raw_Data/Stock_Markets/NYSE_NASDAQ/raw_stock_data/stocks_indicators/data/google_finance"
 directory = "/Users/mirco/Documents/Tesi/code/data/datasets/America_Stocks"
-
+window = 19
 NASDAQ_com_list = []
 NYSE_com_list = []
 NYSE_missing_list = []
-com_list = [NASDAQ_com_list, NYSE_com_list, NYSE_missing_list]
+com_list = [NASDAQ_com_list, NYSE_com_list, NYSE_missing_list] #Ticker lists
 
-print("-" * 5, "Building datasets..." , "-"*5)
-for idx, path in enumerate(com_path):
+
+for idx, path in enumerate(com_path): #Per each ticker folder get the path and index
     with open(path) as f:
         file = csv.reader(f)
         for line in file:
             com_list[idx].append(line[0])  # append first element of line if each line is a list
-NYSE_com_list = [com for com in NYSE_com_list if com not in NYSE_missing_list]
+NYSE_com_list = [com for com in NYSE_com_list if com not in NYSE_missing_list] #Filter the com on NYSE since they are missing 
 fast_approx = False # True for fast approximation and implementation
 # Generate datasets
-train_dataset = MyDataset(directory, des, market[0], NASDAQ_com_list, sedate[0], sedate[1], 19, dataset_type[0], fast_approx)
-validation_dataset = MyDataset(directory, des, market[0], NASDAQ_com_list, val_sedate[0], val_sedate[1], 19, dataset_type[1], fast_approx)
-test_dataset = MyDataset(directory, des, market[0], NASDAQ_com_list, test_sedate[0], test_sedate[1], 19, dataset_type[2], fast_approx)
+print("-"*5, "Building train dataset..." , "-"*5)
+#Market: 0:Nasdaq 1:NYSE 2:SSE
+ #                      root: str, desti: str, market: str, comlist: List[str], start: str, end: str, window: int, dataset_type: str, fast_approx
+train_dataset = MyDataset(directory, des, market[0], NASDAQ_com_list, sedate[0], sedate[1], window, dataset_type[0], fast_approx) 
+print("-"*5, "Building validation dataset..." , "-"*5)
+validation_dataset = MyDataset(directory, des, market[0], NASDAQ_com_list, val_sedate[0], val_sedate[1], window, dataset_type[1], fast_approx)
+print("-"*5, "Building test dataset..." , "-"*5)
+test_dataset = MyDataset(directory, des, market[0], NASDAQ_com_list, test_sedate[0], test_sedate[1], window, dataset_type[2], fast_approx)
+
 
 print("-" * 5, "Defining the model..." , "-"*5)
-# Define model
-layers, num_nodes, expansion_step, num_heads, active, timestamp, classes = 6, 1026, 7, 2, [True, False, False, False, False, False], 19, 2
+####  Define model
+layers = 6
+num_nodes = 1026 
+expansion_step = 7
+num_heads = 2
+active_layers = [True, False, False, False, False, False]
+timestamp = 19  #window
+classes = 2
 diffusion_size = [5*timestamp, 31*timestamp, 28*timestamp, 24*timestamp, 20*timestamp, 16*timestamp, 12*timestamp]
 emb_size = [5 + 31, 64, 28 + 64, 50,
             24 + 50, 38, 20 + 38, 24,
             16 + 24, 12, 12+12, 10]  
-model = DGDNN(diffusion_size, emb_size, classes, layers, num_nodes, expansion_step, num_heads, active, timestamp).to(device)
+
+model = DGDNN(
+    diffusion_size=diffusion_size,
+    embedding_size=emb_size,
+    classes=1,
+    layers=layers,
+    num_nodes=num_nodes,
+    expansion_step=expansion_step,
+    num_heads=num_heads,
+    active=active_layers,
+    timestamp=timestamp
+)
 
 # Pass model GPU
 model = model.to(device)
-
-# Define optimizer and objective function
-def theta_regularizer(theta):
-    row_sums = torch.sum(theta, dim=-1)
-    ones = torch.ones_like(row_sums)
-    return torch.sum(torch.abs(row_sums - ones))
-
-def neighbor_distance_regularizer(theta):
-    box = torch.sum(theta, dim=-1)
-    result = torch.zeros_like(theta)
-
-    for idx, row in enumerate(theta):
-        for i, j in enumerate(row):
-            result[idx, i] = i * j
-
-    result_sum = torch.sum(result, dim=1)
-    return torch.sum(result / result_sum[:, None])
-
 optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4, weight_decay=1.5e-5)
+
 
 # Define training process & validation process & testing process
 
@@ -113,7 +121,8 @@ for epoch in range(epochs):
         C = C.to(device)  # label vector
         optimizer.zero_grad()
         out = model(X, A)
-        objective = F.cross_entropy(out, C) # to fast implement can omit the two regularization terms + theta_regularizer(model.theta) - 0.0029 * neighbor_distance_regularizer(model.theta)
+        objective = F.cross_entropy(out, C) - 0.0029 * neighbor_distance_regularizer(model.theta) + theta_regularizer(model.theta)
+        # to fast implement can omit the two regularization terms + theta_regularizer(model.theta) - 0.0029 * neighbor_distance_regularizer(model.theta)
         objective.backward()
         optimizer.step()
         objective_total += objective.item()

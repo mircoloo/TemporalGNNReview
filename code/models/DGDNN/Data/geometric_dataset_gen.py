@@ -16,14 +16,14 @@ from scipy.linalg import expm
 class MyDataset(Dataset):
     def __init__(self, root: str, desti: str, market: str, comlist: List[str], start: str, end: str, window: int, dataset_type: str, fast_approx):
         super().__init__()
-        self.comlist = comlist
-        self.market = market
+        self.comlist = comlist #tickers of the market (company_list)
+        self.market = market 
         self.root = root
         self.desti = desti
         self.start = start
         self.end = end
         self.window = window
-        self.dates, self.next_day = self.find_dates(start, end, root, comlist, market)
+        self.dates, self.next_day = self.find_dates(start, end, root, comlist, market) 
         self.dataset_type = dataset_type
         self.fast_approx = fast_approx
         # Check if graph files already exist
@@ -40,8 +40,7 @@ class MyDataset(Dataset):
     def __getitem__(self, idx: int):
         directory_path = os.path.join(self.desti, f'{self.market}_{self.dataset_type}_{self.start}_{self.end}_{self.window}')
         data_path = os.path.join(directory_path, f'graph_{idx}.pt')
-        if os.path.exists(data_path):
-            
+        if os.path.exists(data_path):   
             return torch.load(data_path)
         else:
             
@@ -59,18 +58,18 @@ class MyDataset(Dataset):
         date_sets = []
         after_end_date_sets = []
 
-        for h in comlist:
+        for h in comlist: #for each company in company_list 
             dates = set()
             after_end_dates = set()
-            d_path = os.path.join(path, f'{market}_{h}_30Y.csv')
+            d_path = os.path.join(path, f'{market}_{h}_30Y.csv') #get the path of the csv files 
 
             with open(d_path) as f:
                 file = csv.reader(f)
-                next(file, None)  # Skip the header row
+                next(file, None)  # Skip the header row 
                 for line in file:
                     date_str = line[0][:10]
 
-                    if self.check_years(date_str, start, end):
+                    if self.check_years(date_str, start, end): #if the date is between start << date_str << end
                         dates.add(date_str)
                     elif self.check_years(date_str, end, '2017-12-31'):  # '2017-12-31' is just an example, replacing with the latest date when datasets change
                         after_end_dates.add(date_str)
@@ -133,6 +132,7 @@ class MyDataset(Dataset):
             df = df[df.index.isin(pd.to_datetime(dates_dt))]
             df_T = df.transpose()
             df_selected = df_T.iloc[0:5]
+            #print(f"{h}", pd.to_datetime(dates_dt), torch.from_numpy(df_selected.to_numpy()))
             X[:, idx, :] = torch.from_numpy(df_selected.to_numpy())
 
         return X

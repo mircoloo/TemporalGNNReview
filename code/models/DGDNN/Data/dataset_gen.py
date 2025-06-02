@@ -85,7 +85,7 @@ class MyDataset(Dataset):
     def signal_energy(self, x_tuple: Tuple[float]) -> float:
         x = np.array(x_tuple)
         
-        return np.sum(np.square(x))
+        return np.sum(np.square(x)) # sum of the squared of every signal
 
     def information_entropy(self, x_tuple: Tuple[float]) -> float:
         x = np.array(x_tuple)
