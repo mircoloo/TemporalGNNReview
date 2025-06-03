@@ -20,7 +20,7 @@ def neighbor_distance_regularizer(theta):
 
 def train_model_one_epoch(model, dataloader, optimizer, criterion, device):
     model.train()
-    total_loss = .0
+    total_loss =.0
 
     for batch in dataloader:
         batch = batch.to(device)
