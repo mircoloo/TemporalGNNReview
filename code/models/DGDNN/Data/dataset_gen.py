@@ -40,7 +40,7 @@ class MyDataset(Dataset):
         data_path = os.path.join(directory_path, f'graph_{idx}.pt')
         if os.path.exists(data_path):
             
-            return torch.load(data_path)
+            return torch.load(data_path, weights_only=False) ## Added weights_only=True for new torch version requirments
         else:
             
             raise FileNotFoundError(f"No graph data found for index {idx}")

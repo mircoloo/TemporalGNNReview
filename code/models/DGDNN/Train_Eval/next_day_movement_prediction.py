@@ -13,7 +13,7 @@ import sklearn.preprocessing as skp
 from sklearn.metrics import matthews_corrcoef, f1_score
 import os 
 import sys
-from utils import theta_regularizer, neighbor_distance_regularizer
+from code.utils import theta_regularizer, neighbor_distance_regularizer
 
 model_path = os.path.abspath('/Users/mirco/Documents/Tesi/code/models/DGDNN/Model')
 data_path = os.path.abspath('/Users/mirco/Documents/Tesi/code/models/DGDNN/Data')
