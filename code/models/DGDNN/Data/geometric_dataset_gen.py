@@ -128,17 +128,17 @@ class MyDataset(Dataset):
         return torch.log(A)
 
     def node_feature_matrix(self, dates: List[str], comlist: List[str], market: str, path: str) -> torch.Tensor:
-        dates_dt = [pd.to_datetime(date).date() for date in dates]
-        X = torch.zeros((5, len(comlist), len(dates_dt)))
+        dates_dt = [pd.to_datetime(date).date() for date in dates] #convert date into datetime
+        X = torch.zeros((5, len(comlist), len(dates_dt))) #create 0 vector with size (num_feature, num_nodes, num_timestamps)
 
         for idx, h in enumerate(comlist):
             d_path = os.path.join(path, f'{market}_{h}_30Y.csv')
             df = pd.read_csv(d_path, parse_dates=[0], index_col=0)
             df.index = df.index.astype(str).str.split(" ").str[0]
-            df.index = pd.to_datetime(df.index)
-            df = df[df.index.isin(pd.to_datetime(dates_dt))]
+            df.index = pd.to_datetime(df.index) #convert to datetime
+            df = df[df.index.isin(pd.to_datetime(dates_dt))] #prende solo le date in dates_dt 
             df_T = df.transpose()
-            df_selected = df_T.iloc[0:5]
+            df_selected = df_T.iloc[0:5] 
             #print(f"{h}", pd.to_datetime(dates_dt), torch.from_numpy(df_selected.to_numpy()))
             X[:, idx, :] = torch.from_numpy(df_selected.to_numpy())
 
@@ -147,7 +147,7 @@ class MyDataset(Dataset):
     def _create_graphs(self, dates: List[str], desti: str, comlist: List[str], market: str, root: str, window: int):
             dates.append(self.next_day)
     
-            for i in tqdm(range(len(dates) - window + 1)):
+            for i in tqdm(range(len(dates) - window + 1)): #from 0 to dates-window+1  
                 directory_path = os.path.join(desti, f'{market}_{self.dataset_type}_{self.start}_{self.end}_{window}')
                 filename = os.path.join(directory_path, f'graph_{i}.pt')
     
@@ -157,21 +157,21 @@ class MyDataset(Dataset):
     
                 print(f'Generating graph {i}/{len(dates) - window + 1}...')
     
-                box = dates[i:i + window + 1]
-                X = self.node_feature_matrix(box, comlist, market, root)
-                C = torch.zeros(X.shape[1])
+                box = dates[i:i + window + 1] #get the dates of the winow
+                X = self.node_feature_matrix(box, comlist, market, root) # shape [features, nodes, time]
+                C = torch.zeros(X.shape[1]) # zero vector of size n_nodes
     
-                for j in range(C.shape[0]):
-                    if X[3, j, -1] - X[3, j, -2] > 0:
+                for j in range(C.shape[0]): # for each node
+                    if X[3, j, -1] - X[3, j, -2] > 0: #if the closing price the day after is greater, we set c[timestamp] = 1
                         C[j] = 1
     
-                X = X[:, :, :-1]
-                X_dim = [X.shape[0], X.shape[-1]]
-                X = X.view(-1, X_dim[-1])
+                X = X[:, :, :-1]  #Remove prediction day from x
+                X_dim = [X.shape[0], X.shape[-1]] # [features, time]
+                X = X.view(-1, X_dim[-1]) 
                 X = torch.chunk(X, X_dim[0], dim=0)
-                X = torch.cat(X, dim=1)
-                X = torch.Tensor(np.log1p(X.numpy()))
-                edge_index, edge_attr = dense_to_sparse(self.adjacency_matrix(X))
+                X = torch.cat(X, dim=1) #[nodes, features * time]
+                X = torch.Tensor(np.log1p(X.numpy()))  #Applies log1p transform (log(x+1)) → stabilizes numeric values (common in financial data)
+                edge_index, edge_attr = dense_to_sparse(self.adjacency_matrix(X)) #Create edge_index, edge_attr
                 data = Data(x=X, edge_index=edge_index, edge_attr=edge_attr, y=C.long())
                 os.makedirs(directory_path, exist_ok=True)
                 torch.save(data, filename)
