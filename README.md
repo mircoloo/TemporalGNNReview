@@ -17,7 +17,6 @@ While multiple TGNN models exist, comparing them fairly is still challenging due
 - Input preprocessing
 - Temporal encoding
 - Lack of standardized evaluation protcols
-- 
 ---
 
 
