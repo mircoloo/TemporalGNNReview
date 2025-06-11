@@ -74,7 +74,7 @@ class MyDataset(Dataset):
                     if self.check_years(date_str, start, end): #if the date is between start << date_str << end
                         dates.add(date_str)
                         
-                    elif self.check_years(date_str, end, '2019-12-31'):  # '2017-12-31' is just an example, replacing with the latest date when datasets change
+                    elif self.check_years(date_str, end, '2020-01-31'):  # '2017-12-31' is just an example, replacing with the latest date when datasets change
                         after_end_dates.add(date_str)
                 
             if ( len(dates) == 0):
