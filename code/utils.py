@@ -1,4 +1,6 @@
 import torch
+import os
+import sys
 # Define optimizer and objective function
 def theta_regularizer(theta):
     row_sums = torch.sum(theta, dim=-1)
@@ -15,8 +17,6 @@ def neighbor_distance_regularizer(theta):
 
     result_sum = torch.sum(result, dim=1)
     return torch.sum(result / result_sum[:, None])
-
-
 
 
 def train_model_one_epoch(model, dataloader, optimizer, criterion, device):
@@ -36,3 +36,18 @@ def train_model_one_epoch(model, dataloader, optimizer, criterion, device):
     return avg_loss
 
 
+def create_test_report(model_name, epochs,dest, acc, f1, mcc, prediction_balance):
+    full_path = os.path.join(os.getcwd(), f"{dest}/{model_name}_{epochs}.txt")
+    if os.path.exists( full_path ):
+        print("File already exists...")
+        return
+    with open(full_path, 'w+') as f:
+        f.write(f"{model_name}_{epochs}\n")
+        f.write(f"EPOCHS={epochs}\n")
+        f.write(f"ACCURACY={acc}\n")
+        f.write(f"F1Score={f1}\n")
+        f.write(f"MCC={mcc}")
+
+        
+
+    
