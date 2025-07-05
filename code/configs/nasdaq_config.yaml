@@ -1,0 +1,19 @@
+# Data settings
+data_paths:
+  tickers_dir: 'data/tickers'
+  stock_csv_dir: 'data/datasets/stocks_CSVs/America_Stocks_Updated'
+  graph_dest_dir: 'data/datasets/graph'
+
+dataset_params:
+  market: 'NASDAQ'
+  train_sedate: ['2015-05-01', '2015-06-30']
+  val_sedate: ['2015-07-01', '2016-12-31']
+  test_sedate: ['2016-01-01', '2017-12-01']
+  window_size: 10
+  use_fast_approximation: false
+
+# Model and training settings (you can add these later)
+training:
+  batch_size: 1
+  learning_rate: 0.001
+  epochs: 100
