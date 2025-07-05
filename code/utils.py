@@ -1,6 +1,11 @@
 import torch
 import os
 import sys
+from models.DGDNN.Model.dgdnn import DGDNN
+import models.DGDNN.Model.GGD
+import models.DGDNN.Model.CatAttn
+
+
 # Define optimizer and objective function
 def theta_regularizer(theta):
     row_sums = torch.sum(theta, dim=-1)
@@ -49,5 +54,8 @@ def create_test_report(model_name, epochs,dest, acc, f1, mcc, prediction_balance
         f.write(f"MCC={mcc}")
 
         
-
+def load_model(model_name: str):
+    match model_name:
+        case "DGDNN":
+            return DGDNN
     
