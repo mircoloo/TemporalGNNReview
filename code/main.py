@@ -28,24 +28,31 @@ from models.DGDNN.Data.dataset_gen import MyDataset
 
 
 def main() -> None:
-    
+
+    # assigned the root project path    
     PROJECT_PATH: Final[Path] = Path(__file__).parent
 
+    # load paths 
     NASDAQ_CONFIG_PATH: Final[Path] = PROJECT_PATH / Path("configs/nasdaq_config.yaml")
     MODELS_CONFIG_PATH: Final[Path] = PROJECT_PATH / Path("configs/models_config.yaml")
     MODELS_WEIGHTS_PATH: Final[Path] = PROJECT_PATH  / Path("models/weights")
+
+
+    hist_price_stocks_path = PROJECT_PATH / Path("data/datasets/hist_prices/NASDAQ")
+    graph_dest_path =  PROJECT_PATH / Path("data/datasets/graph")
+    tickers_csv_path = PROJECT_PATH / Path("data/tickers/NASDAQ.csv")
     
     print(NASDAQ_CONFIG_PATH)
     
     
-
+    # Load the YAML configutarion files
     with open(NASDAQ_CONFIG_PATH, 'r') as f:
         dataset_yaml = yaml.load(f, Loader=yaml.SafeLoader)
     with open(MODELS_CONFIG_PATH, 'r') as f:
         models_yaml = yaml.load(f, Loader=yaml.SafeLoader)
     
-    
 
+    # assigne the dataset variables
     dataset_param: dict = dataset_yaml['dataset_params']
     market:str = dataset_param['market']
     train_sedate: list[str] = dataset_param['train_sedate']
@@ -54,10 +61,14 @@ def main() -> None:
     window_size: int = dataset_param['window_size']
     use_fast_approximation: bool = dataset_param['use_fast_approximation']
 
+    # load the device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
-    dataset_param: dict = models_yaml['DGDNN']
 
+    # get the model parameters from the configuration file 
+    dataset_param: dict = models_yaml['DGDNN']
+    
+    # load the model
     DGDNN = load_model('DGDNN')
     model_DGDNN = DGDNN(
         diffusion_size=dataset_param['diffusion_size'],
@@ -71,17 +82,11 @@ def main() -> None:
         timestamp=dataset_param['timestamp']
 ).to(device)
 
-    hist_price_stocks_path = PROJECT_PATH / Path("data/datasets/hist_prices/America_Stocks")
-    graph_dest_path =  PROJECT_PATH / Path("data/datasets/graph")
-    tickers_csv_path = PROJECT_PATH / Path("data/tickers/NASDAQ.csv")
-
-    market = 'NASDAQ'
-
+    # parse the tickers to use from the csv file
     with open(tickers_csv_path, 'r') as f:
         content = f.read()
         company_list = content.split()
 
-    print(company_list)
     #company_list = company_list
     dataset_type = ['Train', 'Validation', 'Test']
 
@@ -92,7 +97,7 @@ def main() -> None:
     validation_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, company_list, val_sedate[0], val_sedate[1], window_size, dataset_type[1], use_fast_approximation)
     print("-"*5, "Building test dataset..." , "-"*5)
     test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, company_list, test_sedate[0], test_sedate[1], window_size, dataset_type[2], use_fast_approximation)
-#clear_output()
+
 
     ### TEMPORARY
 
@@ -104,9 +109,10 @@ def main() -> None:
     print(len(validation_loader))
     print(len(test_loader))
 
-
     torch.save(model_DGDNN.state_dict(), MODELS_WEIGHTS_PATH / Path("model_DGDNN_weights.pth"))
     
+
+
 
 if __name__ == '__main__':
     main()
