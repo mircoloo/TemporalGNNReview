@@ -1,6 +1,10 @@
 #Files
 token
+*.err
+*.out
+*.slurm
 #Directories
 code/data/*
 code/tesi_venv/*
+
 

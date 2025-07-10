@@ -6,9 +6,11 @@ from .GGD import GeneralizedGraphDiffusion
 from .CatAttn import CatMultiAttn
 
 class DGDNN(nn.Module):
-    def __init__(self, diffusion_size, embedding_size, classes,
+    def __init__(self, diffusion_size: list # e.g., [F0, F1, F2]
+                 ,embedding_size: list # e.g., [F1+F1, E1, E1+F2, E2, ...]
+                 , classes,
                  layers, num_nodes, expansion_step, num_heads, active, timestamp):
-        assert len(embedding_size) == 2*layers, f"len of emb_size must have 2* the num_layers, current len_emb_size:{len(embedding_size)} instead of {layers*2}"
+        #assert len(embedding_size) == 2*layers, f"len of emb_size must have 2* the num_layers, current len_emb_size:{len(embedding_size)} instead of {layers*2}"
         assert len(diffusion_size) == layers + 1, f"The length of diffusion size must be one more than the length of layers. Obtained {len(diffusion_size)} and expected {len(layers)+1}"
         assert diffusion_size[0] == 5*timestamp, f"First diffusion size dimension must match timestamp*num_features, expected {timestamp*5} "
 
