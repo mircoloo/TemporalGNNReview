@@ -11,6 +11,7 @@ from torch.utils.data import Dataset
 from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
 from scipy.linalg import expm
+from pathlib import Path
 
 
 class MyDataset(Dataset):
@@ -23,34 +24,34 @@ class MyDataset(Dataset):
         self.end = end
         self.window = window
 
-        # Determine the maximum end date among all your dataset splits to set the global search limit
-        self.global_data_search_cutoff = '2025-07-05' # Ensure this is a date beyond your latest 'end' date in test_sedate
+        self.global_data_search_cutoff = '2025-07-05'
 
-        # Modify find_dates to also return the *filtered* comlist
-        self.comlist, self.dates, self.next_day = self.find_dates(start, end, root, comlist, market, self.global_data_search_cutoff)
+        self.comlist, self.dates, self.next_day = self.find_dates(start, end, comlist, self.global_data_search_cutoff)
 
         self.dataset_type = dataset_type
         self.fast_approx = fast_approx
 
-        # Check if we have valid dates to proceed
         if not self.dates or len(self.dates) < self.window + 1:
-            print(f"Insufficient common dates ({len(self.dates)}) found across all companies for a window of size {self.window}. Dataset will be empty.")
-            self.comlist = [] # Ensure comlist is empty if dataset is empty
+            print(f"Insufficient common dates ({len(self.dates)}) found for a window of size {self.window}. Dataset will be empty.")
+            self.comlist = []
 
-        if not self.comlist: # Added check for empty comlist after filtering
-            print("No valid companies with data found. Dataset will be empty.")
-            self.dates = [] # Ensure dates is empty if no companies
+        if not self.comlist:
+            print(f"No valid companies with data found. {self.dataset_type} Dataset will be empty.")
+            self.dates = []
 
-
-        # Check if graph files already exist
         graph_files_exist = all(os.path.exists(os.path.join(desti, f'{market}_{dataset_type}_{start}_{end}_{window}/graph_{i}.pt')) for i in range(len(self.dates) - window + 1))
 
         if not graph_files_exist:
-            if self.dates and len(self.dates) >= self.window + 1 and self.comlist: # Add self.comlist check here too
-                self._create_graphs(self.dates, desti, self.comlist, market, root, window) # Pass self.comlist
+            if self.dates and len(self.dates) >= self.window + 1 and self.comlist:
+                self._create_graphs() # Removed arguments as they are instance attributes
             else:
                 print("Skipping graph creation due to insufficient common dates or no valid companies.")
 
+    # NEW HELPER METHOD: Centralizes filename creation for easier future changes.
+    def _get_ticker_filepath(self, ticker: str) -> str:
+        """Constructs the full path for a company's ticker CSV file."""
+        filename = f'{self.market}_{ticker}.csv'
+        return os.path.join(self.root, filename)
 
     def __len__(self):
         if not self.dates or len(self.dates) < self.window + 1 or not self.comlist:
@@ -66,9 +67,6 @@ class MyDataset(Dataset):
             raise FileNotFoundError(f"No graph data found for index {idx}")
 
     def check_years(self, date_str: str, start_str: str, end_str: str) -> bool:
-        """
-        Check if the provided dates are chronologically correct within a given range [start_str, end_str]
-        """
         date_format = "%Y-%m-%d"
         try:
             date = datetime.strptime(date_str, date_format)
@@ -78,107 +76,68 @@ class MyDataset(Dataset):
         except ValueError:
             return False
 
-    def find_dates(self, start: str, end: str, path: str, initial_comlist: List[str], market: str, search_until_date: str) -> Tuple[List[str], List[str], str]:
-        """
-        Identifies and returns common trading dates across a list of companies, filtering out those without data files
-        and ensuring date compliance for dataset construction.
-
-        Args:
-            start (str): The start date (YYYY-MM-DD) for the primary data window.
-            end (str): The end date (YYYY-MM-DD) for the primary data window.
-            path (str): The root directory where company CSV data files are located.
-            initial_comlist (List[str]): The initial, unfiltered list of company tickers.
-            market (str): The market identifier (e.g., 'NASDAQ') used in the CSV filename.
-            search_until_date (str): The absolute latest date (YYYY-MM-DD) to consider for
-                                     'after-end' dates (should be beyond the latest `end` in your splits).
-
-        Returns:
-            Tuple[List[str], List[str], str]: A tuple containing:
-                -   `List[str]`: The `filtered_comlist` of companies that have existing data files.
-                -   `List[str]`: A sorted list of common trading dates found across all `filtered_comlist`
-                                 companies within the `[start, end]` range. Returns an empty list if
-                                 no common dates are found.
-                -   `str` (or `None`): The earliest common date immediately following the `end` date,
-                                       intended for prediction targets. Returns `None` if no such common day exists.
-        """
-        
-        # Filter comlist upfront based on file existence
-
+    def find_dates(self, start: str, end: str, initial_comlist: List[str], search_until_date: str) -> Tuple[List[str], List[str], str]:
         filtered_comlist: list[str] = []
+        not_inserted_companies: list[str] = []
         for h in initial_comlist:
-            d_path = os.path.join(path, f'{market}_{h}_30Y.csv')
+            # CHANGED: Using the new helper method to get the file path.
+            d_path = self._get_ticker_filepath(h)
             if os.path.isfile(d_path):
                 filtered_comlist.append(h)
             else:
                 print(f"Stock {h} data file not found at {d_path}. **Excluding this stock from analysis.**")
-
+                not_inserted_companies.append(h)
         if not filtered_comlist:
             print("No valid stock data files found after initial filtering. Returning empty lists.")
-            return [], [], None # Return empty list for comlist, dates, and None for next_day
+            return [], [], None
 
         date_sets_valid = []
         after_end_date_sets_valid = []
-
         start_dt = datetime.strptime(start, "%Y-%m-%d")
         end_dt = datetime.strptime(end, "%Y-%m-%d")
         search_until_dt = datetime.strptime(search_until_date, "%Y-%m-%d")
 
-        for company_ticker in filtered_comlist: # Iterate over the filtered list
+        for company_ticker in filtered_comlist:
             dates: set = set()
             after_end_dates: set = set()
-            d_path: str = os.path.join(path, f'{market}_{company_ticker}_30Y.csv')
+            # CHANGED: Using the new helper method again.
+            d_path: str = self._get_ticker_filepath(company_ticker)
             with open(d_path, 'r') as f:
                 file = csv.reader(f)
-                next(file, None) #Skip the first row
+                next(file, None)
                 for line in file:
-                    if not line:
-                        continue
-                    date_str = line[0][:10]
+                    if not line: continue
                     try:
-                        current_date_dt = datetime.strptime(date_str, "%Y-%m-%d")
-                    except ValueError:
+                        current_date_dt = datetime.strptime(line[0][:10], "%Y-%m-%d")
+                        if start_dt <= current_date_dt <= end_dt:
+                            dates.add(line[0][:10])
+                        elif end_dt < current_date_dt <= search_until_dt:
+                            after_end_dates.add(line[0][:10])
+                        else:
+                            not_inserted_companies.append(company_ticker)
+                    except (ValueError, IndexError):
                         continue
-
-                    if start_dt <= current_date_dt <= end_dt:
-                        dates.add(date_str)
-                    elif end_dt < current_date_dt <= search_until_dt:
-                        after_end_dates.add(date_str)
-
-            if len(dates) == 0:
-                print(f"For stock {h}, there are no dates in the primary range {start} to {end}. This stock's dates won't contribute to the common dates.")
-            else:
-                date_sets_valid.append(dates)
-
-            if len(after_end_dates) == 0:
-                print(f"For stock {h}, there are no 'after-end' dates in range {end} to '{search_until_date}'. This stock's dates won't contribute to the common 'next day'.")
-            else:
-                after_end_date_sets_valid.append(after_end_dates)
+            
+            if dates: date_sets_valid.append(dates)
+            if after_end_dates: after_end_date_sets_valid.append(after_end_dates)
 
         if not date_sets_valid:
-            print("No companies had valid dates in the primary range. Returning empty common dates.")
-            return filtered_comlist, [], None # Still return filtered_comlist, but no dates/next_day
-
-        if not after_end_date_sets_valid:
-            print("No companies had valid dates in the 'after-end' range. Returning no common 'next day'.")
             return filtered_comlist, [], None
 
-
-        all_dates = list(set.intersection(*date_sets_valid))
-        all_after_end_dates = list(set.intersection(*after_end_date_sets_valid))
-
+        all_dates = sorted(list(set.intersection(*date_sets_valid))) if date_sets_valid else []
+        all_after_end_dates = sorted(list(set.intersection(*after_end_date_sets_valid))) if after_end_date_sets_valid else []
+        
         if not all_dates:
-            print("No common dates found across all *valid* companies within the primary range.")
             return filtered_comlist, [], None
+        
+        next_common_day = all_after_end_dates[0] if all_after_end_dates else None
 
-        next_common_day = min(all_after_end_dates) if all_after_end_dates else None
+        if not next_common_day:
+            print(f"Warning: No common next_day found after {end}. This will prevent graph generation.")
+            return filtered_comlist, all_dates, None
 
-        if next_common_day is None:
-            print(f"Warning: No common next_day found across all *valid* companies after {end} and up to {search_until_date}. This will prevent graph generation.")
-            return filtered_comlist, [], None
 
-        print(f"Max date in range: {max(all_dates)}, Min date after range: {next_common_day}")
-
-        return filtered_comlist, sorted(all_dates), next_common_day # Return the filtered comlist as well
+        return filtered_comlist, all_dates, next_common_day
 
     def signal_energy(self, x_tuple: Tuple[float]) -> float:
         x = np.array(x_tuple)
@@ -213,107 +172,102 @@ class MyDataset(Dataset):
             H = D_tilde @ A_np @ D_tilde
             return torch.from_numpy(expm(-t * (np.eye(num_nodes) - H))).float()
 
-        A[A<1] = 1
+        A[A < 1] = 1
         return torch.log(A)
 
-    def node_feature_matrix(self, dates: List[str], comlist: List[str], market: str, path: str) -> torch.Tensor:
-        dates_dt = [pd.to_datetime(date).date() for date in dates]
-        # X will have dimensions [num_features, num_nodes, num_timestamps]
-        # num_nodes is now len(comlist) which is already filtered
-        X = torch.zeros((5, len(comlist), len(dates_dt)))
+    def node_feature_matrix(self, dates: List[str]) -> torch.Tensor:
+        
+        # Convert date strings to datetime objects for indexing
+        dates_dt = pd.to_datetime(dates)
+        
+        # Initialize the feature tensor X with the correct dimensions
+        # 5 features, number of companies, and number of time steps in the window
+        X = torch.zeros((5, len(self.comlist), len(dates_dt)))
 
-        for idx, h in enumerate(comlist): # Iterate over the *filtered* comlist
-            d_path = os.path.join(path, f'{market}_{h}_30Y.csv')
-            # No need for os.path.isfile(d_path) check here, as it's guaranteed to exist for h in comlist
+        for idx, h in enumerate(self.comlist):
+            d_path = self._get_ticker_filepath(h)
             df = pd.read_csv(d_path, parse_dates=[0], index_col=0)
-            df.index = df.index.astype(str).str.split(" ").str[0]
-            df.index = pd.to_datetime(df.index)
+            
+            # Ensure the DataFrame index is just the date part for clean matching
+            df.index = pd.to_datetime(df.index.date)
 
-            df_selected_and_reindexed = df.reindex(pd.to_datetime(dates_dt))
-            df_selected_and_reindexed = df_selected_and_reindexed.fillna(0) # Keep fillna for actual data gaps, not missing files
+            # Reindex the DataFrame to match the exact dates of the window.
+            # This adds rows with `fill_value=0` for any missing dates.
+            df_reindexed = df.reindex(dates_dt, fill_value=0)
 
-            df_T = df_selected_and_reindexed.transpose()
-            df_selected = df_T.iloc[0:5]
-
-            if df_selected.shape[1] != len(dates_dt):
-                print(f"Warning: Stock {h} has missing data for some dates in the current window. Data will be partially filled with zeros.")
-
-            X[:, idx, :] = torch.from_numpy(df_selected.to_numpy())
+            # --- THIS IS THE CORRECTED LOGIC ---
+            # Select all rows (the full time window) and the first 5 columns (features).
+            # .iloc[:, :5] gets all rows and columns from index 0 up to 4.
+            # Then, transpose the result to get the desired shape [5_features, num_timesteps].
+            df_features = df_reindexed.iloc[:, :5].transpose()
+            
+            # Assign the resulting tensor to the correct slice in X
+            # The shape of df_features.to_numpy() is now [5, 20], which matches the target slice.
+            X[:, idx, :] = torch.from_numpy(df_features.to_numpy())
 
         return X
 
-    def _create_graphs(self, dates: List[str], desti: str, comlist: List[str], market: str, root: str, window: int):
-            if len(dates) < window + 1 or not comlist: # Add comlist check
-                print(f"Not enough common dates ({len(dates)}) or no valid companies ({len(comlist)}) to form a window of size {window} plus a prediction day. Skipping graph generation.")
-                return
-
-            dates_with_next_day = list(dates)
-            if self.next_day:
-                dates_with_next_day.append(self.next_day)
-            else:
-                print("Warning: No 'next_day' found for prediction target. Graph generation might be incomplete or problematic.")
-                return
-
-            for i in tqdm(range(len(dates_with_next_day) - window)):
-                directory_path = os.path.join(desti, f'{market}_{self.dataset_type}_{self.start}_{self.end}_{window}')
-                filename = os.path.join(directory_path, f'graph_{i}.pt')
-
-                if os.path.exists(filename):
-                    continue
-
-                box = dates_with_next_day[i : i + window + 1]
-
-                if len(box) != (window + 1):
-                    print(f"Skipping graph {i}: Incomplete date 'box' ({len(box)} dates instead of {window + 1}).")
-                    continue
-
-                # Pass the already filtered self.comlist
-                X = self.node_feature_matrix(box, self.comlist, market, root)
-
-                if X.shape[1] == 0 or X.shape[2] == 0:
-                    print(f"Skipping graph {i}: node_feature_matrix returned empty data for this window.")
-                    continue
-
-                C = torch.zeros(X.shape[1])
-
-                for j in range(C.shape[0]):
-                    if X.shape[2] >= 2:
-                        if X[3, j, -1] - X[3, j, -2] > 0:
-                            C[j] = 1
-                    else:
-                        print(f"Warning: Insufficient time steps for prediction for stock {self.comlist[j]} in graph {i}. Setting C[{j}]=0.")
-                        C[j] = 0
 
 
-                X_features = X[:, :, :-1]
+    def _create_graphs(self):
+        if len(self.dates) < self.window + 1 or not self.comlist:
+            print(f"Skipping graph generation due to insufficient data.")
+            return
 
-                if X_features.shape[0] == 0 or X_features.shape[1] == 0 or X_features.shape[2] == 0:
-                    print(f"Skipping graph {i}: Feature matrix is empty after removing prediction day.")
-                    continue
+        dates_with_next_day = self.dates + ([self.next_day] if self.next_day else [])
+        if len(dates_with_next_day) < self.window + 1:
+            print("Not enough dates to create even one graph.")
+            return
 
-                X_dim = [X_features.shape[0], X_features.shape[-1]]
-                X_reshaped = X_features.view(-1, X_dim[-1])
+        directory_path = os.path.join(self.desti, f'{self.market}_{self.dataset_type}_{self.start}_{self.end}_{self.window}')
+        os.makedirs(directory_path, exist_ok=True)
+        
+        for i in tqdm(range(len(self.dates) - self.window + 1)):
+            filename = os.path.join(directory_path, f'graph_{i}.pt')
+            if os.path.exists(filename):
+                continue
+            # Time window dates + the prediction date
+            box = self.dates[i : i + self.window + 1]
+            
+            #print(f"{box=}")
 
-                if X_reshaped.shape[0] == 0 or X_reshaped.shape[1] == 0:
-                     print(f"Skipping graph {i}: Reshaped feature matrix is empty.")
-                     continue
+            X = self.node_feature_matrix(box)
+            
+            if X.shape[1] == 0:
+                print(f"Skipping graph {i}: No nodes.")
+                continue
 
-                X_final = torch.chunk(X_reshaped, X_dim[0], dim=0)
-                X_final = torch.cat(X_final, dim=1)
+            # Target C is based on the 'Close' price (row index 0)
 
-                try:
-                    X_final = torch.Tensor(np.log1p(X_final.numpy()))
-                except ValueError as e:
-                    print(f"Skipping graph {i} due to ValueError during log1p transform (e.g., negative input): {e}")
-                    continue
+            C = torch.zeros(X.shape[1])
 
+            # X is [feature, node, timestep]
+            
+            for j in range(C.shape[0]):
+                if X[0, j, -1] - X[0, j, -2] > 0:
+                    C[j] = 1
 
-                try:
-                    edge_index, edge_attr = dense_to_sparse(self.adjacency_matrix(X_final))
-                except Exception as e:
-                    print(f"Skipping graph {i} due to error in adjacency matrix calculation: {e}")
-                    continue
+            # Remove the last timestep (preditction one)
+            X_features = X[:, :, :-1]
+            
+            if X_features.nelement() == 0:
+                print(f"Skipping graph {i}: Feature matrix is empty.")
+                continue
+                
+            # from [feature, node, timestep] to [node, feature, timestep] -> [node, feature * timestamps]
+            X_final = X_features.permute(1, 0, 2).reshape(X_features.shape[1], -1)
+            
+            try:
+                X_final = torch.nan_to_num(torch.log1p(X_final), 0)
+            except Exception as e:
+                print(f"Skipping graph {i} due to log1p error: {e}")
+                continue
 
-                data = Data(x=X_final, edge_index=edge_index, edge_attr=edge_attr, y=C.long())
-                os.makedirs(directory_path, exist_ok=True)
-                torch.save(data, filename)
+            try:
+                edge_index, edge_attr = dense_to_sparse(self.adjacency_matrix(X_final))
+            except Exception as e:
+                print(f"Skipping graph {i} due to adjacency matrix error: {e}")
+                continue
+
+            data = Data(x=X_final, edge_index=edge_index, edge_attr=edge_attr, y=C)
+            torch.save(data, filename)

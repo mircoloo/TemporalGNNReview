@@ -2,11 +2,11 @@
 DGDNN:
   model_name: DGDNN
   layers: 6
-  num_nodes: 5 # Fill dynamically in code if needed
+  num_nodes: 1026 # Fill dynamically in code if needed
   expansion_step: 7
   num_heads: 2
   active_layers: [true, false, false, false, false, false]
-  timestamp: 2
+  timestamp: 19
   classes: 1
-  diffusion_size: [10, 62, 56, 48, 40, 32, 24]
-  embedding_size: [36, 64, 92, 50, 74, 38, 58, 24, 40, 12, 24, 10]
+  diffusion_size: [95, 64, 128, 256, 256, 256, 128]
+  embedding_size: [128, 384, 512, 512, 512, 384]
