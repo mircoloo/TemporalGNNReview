@@ -2,8 +2,8 @@ import torch
 import os
 import sys
 from models.DGDNN.Model.dgdnn import DGDNN
-import models.DGDNN.Model.GGD
-import models.DGDNN.Model.CatAttn
+import models.DGDNN.Model.ggd
+import models.DGDNN.Model.catattn
 from pathlib import Path
 from datetime import datetime
 import pandas as pd 
