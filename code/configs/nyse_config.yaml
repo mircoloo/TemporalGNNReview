@@ -4,15 +4,16 @@
 
 # Parameters related to data loading and time periods
 dataset_params:
-  market: 'NASDAQ'
+  market: 'NYSE'
   train_sedate: ['2016-05-01', '2017-06-30']
   val_sedate: ['2017-07-01', '2017-12-31']
   test_sedate: ['2018-01-01', '2019-12-31']
-  window_size: 19  # From paper: τ = 19
+  window_size: 22  # From paper: τ = 19
   use_fast_approximation: false
 
 # -----------------------------------------------------------------
 
+# Parameters defining the NEW DGDNN model architecture
 model_params:
   layers: 8          # From paper: L = 8
   expansion_step: 9  # From paper: K = 9
@@ -28,18 +29,19 @@ model_params:
   raw_feature_size: 96
 
   # --- Calculated lists based on the new rules ---
-  diffusion_size: [95, 128, 256, 512, 256, 128, 128, 128, 128]
+  # Length must be layers + 1 = 9. First element must be 5 * window_size = 95.
+  diffusion_size: [110, 128, 256, 512, 256, 128, 128, 128, 128]
 
   # Length must be layers = 8. Values are calculated input dimensions for each attention layer.
   embedding_size:
-    - 224  
-    - 384  # 384 / 3 = 128
-    - 640  # 639 / 3 = 213
-    - 384  # 384 / 3 = 128
-    - 256  # 255 / 3 = 85
-    - 256
-    - 256
-    - 256
+    - 224  # Layer 0: diffusion_size[1] + raw_feature_size = 128 + 96
+    - 384  # Layer 1: diffusion_size[2] + embedding_output_size = 256 + 128
+    - 640  # Layer 2: diffusion_size[3] + embedding_output_size = 512 + 128
+    - 384  # Layer 3: diffusion_size[4] + embedding_output_size = 256 + 128
+    - 256  # Layer 4: diffusion_size[5] + embedding_output_size = 128 + 128
+    - 256  # Layer 5: diffusion_size[6] + embedding_output_size = 128 + 128
+    - 256  # Layer 6: diffusion_size[7] + embedding_output_size = 128 + 128
+    - 256  # Layer 7: diffusion_size[8] + embedding_output_size = 128 + 128
 
 # -----------------------------------------------------------------
 
