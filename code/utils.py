@@ -31,16 +31,26 @@ def load_model(model_name: str):
     match model_name:
         case "DGDNN":
             return DGDNN
-        
+        case _:  # default case for any other model name
+            raise ValueError(f"Unknown model name: {model_name}")
     
+def log_test_results(filename: Path | str, path_to_log: str | Path, **kwargs):
+    path_to_log = Path(path_to_log) 
+    if not path_to_log.exists():
+        print(f"Folder {path_to_log} does not exists...")
+        raise FileNotFoundError
+    filepath = path_to_log / Path(filename)
+    with open(filepath, 'a+') as f:
+        for key,value in kwargs.items():
+            f.write(f"{key}={value}\n")
+    f.write("=======================\n")
 
-  
 
 
 
 def main() -> None:
     #filter_stocks_from_timeperiod(['AAPL', 'MSFT'], ['2012-01-01', '2025-04-01'], Path("/home/mbisoffi/tests/TemporalGNNReview/code/data/datasets/hist_prices/America_Stocks"))
-    ...
+    log_test_results("test.txt", "./", Come="va", zio=5, acc=3)
 if __name__ == "__main__":
     main()
 

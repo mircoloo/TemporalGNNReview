@@ -9,12 +9,15 @@ class GeneralizedGraphDiffusion(torch.nn.Module):
         self.activation0 = torch.nn.PReLU()
         self.active = active
 
-    def forward(self, theta, t, x, a):
-        q = 0
-        for i in range(theta.shape[0]): # for each layer
-            q += theta[i] * t[i]
-        
-        x = self.fc((q * a) @ x) #diffusion step
+    def forward(self, theta, T, x, A):
+        Q = 0
+        for i in range(theta.shape[0]): # for each diffusion step
+            
+            print(f"{theta[i].shape=}\n{T[i].shape=}")
+            Q += theta[i] * T[i] # scalar * (num_nodes x num_nodes)
+        # Q is ((num_nodes * num_nodes) * (num_nodes * num_nodes)) @ (num_nodes, diffusion_size[i])
+        x = self.fc((Q * A) @ x) #diffusion step input=diffusion_size[i], output=diffusion_size[i+1]
+        # x.shape = (num_nodes, diffusion_size[i+1])
         if self.active:
             x = self.activation0(x)
 
