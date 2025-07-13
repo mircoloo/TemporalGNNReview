@@ -6,5 +6,5 @@ token
 #Directories
 code/data/*
 code/tesi_venv/*
-
+code/logs/*
 
