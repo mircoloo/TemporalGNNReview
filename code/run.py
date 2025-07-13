@@ -1,6 +1,12 @@
 import argparse
 import sys
 from pathlib import Path
+import os
+
+# Add the models directory to Python path
+PROJECT_PATH = Path(__file__).parent.resolve()
+sys.path.append(str(PROJECT_PATH))
+sys.path.append(str(PROJECT_PATH / "models" / "DGDNN" / "Model"))
 
 import torch
 import torch.nn as nn
@@ -10,8 +16,6 @@ from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import to_dense_adj
 from tqdm import tqdm
-import os 
-import sys
 
 
 
@@ -36,6 +40,7 @@ def main(args: argparse.Namespace) -> None:
     """
     # ------------------ 1. SETUP PATHS AND CONFIGS BASED ON ARGS ------------------
     PROJECT_PATH = Path(__file__).parent.resolve()
+    sys.path.append(str(PROJECT_PATH))
     
     market_name = args.market.lower()
     print(f"🚀 Starting process for market: {market_name.upper()}")
@@ -115,8 +120,7 @@ def main(args: argparse.Namespace) -> None:
         num_nodes=num_nodes,
         expansion_step=model_param['expansion_step'],
         num_heads=model_param['num_heads'],
-        active=model_param['active_layers'],
-        timestamp=window_size
+        active=model_param['active_layers']
     ).to(device)
     
     print(f"Model parameters: {sum([p.numel() for p in model_DGDNN.parameters()]):,}")
@@ -155,7 +159,7 @@ def main(args: argparse.Namespace) -> None:
             train_loss += loss.item()
 
         # --- Validation step ---
-        if epoch % 20 == 0:
+        if epoch % 1 == 0:
             val_loss, val_acc, val_f1 = 0.0, 0.0, 0.0
             model_DGDNN.eval() # Switch to evaluation mode
             with torch.no_grad():
