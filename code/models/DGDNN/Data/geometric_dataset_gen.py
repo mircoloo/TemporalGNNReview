@@ -26,10 +26,11 @@ class MyDataset(Dataset):
 
         self.global_data_search_cutoff = '2025-07-05'
 
-        self.comlist, self.dates, self.next_day = self.find_dates(start, end, comlist, self.global_data_search_cutoff)
 
         self.dataset_type = dataset_type
         self.fast_approx = fast_approx
+        
+        self.comlist, self.dates, self.next_day = self.find_dates(start, end, comlist, self.global_data_search_cutoff)
 
         if not self.dates or len(self.dates) < self.window + 1:
             print(f"Insufficient common dates ({len(self.dates)}) found for a window of size {self.window}. Dataset will be empty.")
@@ -39,6 +40,8 @@ class MyDataset(Dataset):
             print(f"No valid companies with data found. {self.dataset_type} Dataset will be empty.")
             self.dates = []
 
+
+                
         graph_files_exist = all(os.path.exists(os.path.join(desti, f'{market}_{dataset_type}_{start}_{end}_{window}/graph_{i}.pt')) for i in range(len(self.dates) - window + 1))
 
         if not graph_files_exist:
@@ -137,6 +140,9 @@ class MyDataset(Dataset):
             return filtered_comlist, all_dates, None
 
 
+        # CREATE REPORT, TO CHANGE In FUTURE
+        self._create_report(Path('/home/mbisoffi/tests/TemporalGNNReview/code/logs'), not_inserted_companies)
+
         return filtered_comlist, all_dates, next_common_day
 
     def signal_energy(self, x_tuple: Tuple[float]) -> float:
@@ -206,6 +212,32 @@ class MyDataset(Dataset):
             X[:, idx, :] = torch.from_numpy(df_features.to_numpy())
 
         return X
+
+    def _create_report(self, path: Path, missing_stocks: List[str]):
+        filename = Path(f"{self.dataset_type}_{self.start}_{self.end}_{self.window}.log")
+        file: Path = path / filename
+
+        if file.exists():
+            print(f"Log file for {filename} already exists... overwriting it")
+
+        # Create log header
+        header = (
+            f"Log created on: {datetime.now().isoformat()}\n"
+            f"Dataset type: {self.dataset_type}\n"
+            f"Date range: {self.start} to {self.end}\n"
+            f"Window size: {self.window}\n"
+            f"Missing stocks ({len(missing_stocks)}):\n"
+            + "-" * 40 + "\n"
+        )
+
+        # Write header and missing stock list
+        with open(file, "w") as f:
+            f.write(header)
+            for stock in missing_stocks:
+                f.write(f"{stock}\n")
+
+        print(f"Log written to {file}")
+            
 
 
 
