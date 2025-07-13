@@ -5,9 +5,9 @@
 # Parameters related to data loading and time periods
 dataset_params:
   market: 'NASDAQ'
-  train_sedate: ['2014-01-01', '2017-12-31']
-  val_sedate: ['2018-01-01', '2018-12-31']
-  test_sedate: ['2019-01-01', '2020-12-31']
+  train_sedate: ['2016-05-01', '2017-06-30']
+  val_sedate: ['2017-07-01', '2017-12-31']
+  test_sedate: ['2018-01-01', '2019-12-31']
   window_size: 19  # From paper: τ = 19
   use_fast_approximation: false
 
@@ -17,7 +17,7 @@ dataset_params:
 model_params:
   layers: 8          # From paper: L = 8
   expansion_step: 9  # From paper: K = 9
-  num_heads: 3       # From paper
+  num_heads: 2      # From paper should be 3
   active_layers: [true, true, true, true, false, false, false, false]
 
   # --- New simplified attention parameters ---
