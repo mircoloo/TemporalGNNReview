@@ -1,12 +1,10 @@
 # -----------------------------------------------------------------
-# Configuration for the SSE market
-# Parameters are set based on the DGDNN paper and calculated for model compatibility.
+# Configuration for the NASDAQ market (for the NEW DGDNN model)
 # -----------------------------------------------------------------
 
 # Parameters related to data loading and time periods
 dataset_params:
   market: 'SSE'
-  # Note: Date ranges below are illustrative. Adjust them to your specific dataset splits.
   train_sedate: ['2016-05-01', '2017-06-30']
   val_sedate: ['2017-07-01', '2017-12-31']
   test_sedate: ['2018-01-01', '2019-12-31']
@@ -15,25 +13,35 @@ dataset_params:
 
 # -----------------------------------------------------------------
 
-# Parameters defining the DGDNN model architecture
+# Parameters defining the NEW DGDNN model architecture
 model_params:
-  layers: 6          # From paper: L = 8
-  expansion_step: 7  # From paper: K = 9
-  num_heads: 2      # From paper they should be 3
-  # active_layers determines which diffusion layers are active. This is a suggested setup.
-  active_layers: [True, False, False, False, False, False]
+  layers: 8          # From paper: L = 8
+  expansion_step: 9  # From paper: K = 9
+  num_heads: 2      # From paper should be 3
+  active_layers: [true, true, true, true, false, false, false, false]
 
-  # The first element must be 5 * window_size = 5 * 19 = 95.
-  # The following is a suggested architecture with decreasing feature dimensions.
-  diffusion_size: [70, 589, 532, 456, 380, 304, 228] #the first must be the number of parameters x timestamps
-  #diffusion_size: [95, 64, 128, 256, 256, 256, 128]
-  # embedding_size length length must be layers * 2
-  embedding_size: [36, 64, 92, 50, 74, 38, 58, 24, 40, 12, 24, 10]
+  # --- New simplified attention parameters ---
+  # The output size for ALL attention layers. From paper's "embedding dimension".
+  embedding_output_size: 128
+  # The size of the internal MLP inside the attention block. 256 is a sensible default.
+  embedding_hidden_size: 256
+  # The size the raw features are projected to. Must be divisible by num_heads (3). 96 is a good choice.
+  raw_feature_size: 96
 
-  
-  embedding_hidden_size: 1024
-  embedding_output_size: 256
-  raw_feature_size: 64
+  # --- Calculated lists based on the new rules ---
+  # Length must be layers + 1 = 9. First element must be 5 * window_size = 95.
+  diffusion_size: [70, 128, 256, 512, 256, 128, 128, 128, 128]
+
+  # Length must be layers = 8. Values are calculated input dimensions for each attention layer.
+  embedding_size:
+    - 224  # Layer 0: diffusion_size[1] + raw_feature_size = 128 + 96
+    - 384  # Layer 1: diffusion_size[2] + embedding_output_size = 256 + 128
+    - 640  # Layer 2: diffusion_size[3] + embedding_output_size = 512 + 128
+    - 384  # Layer 3: diffusion_size[4] + embedding_output_size = 256 + 128
+    - 256  # Layer 4: diffusion_size[5] + embedding_output_size = 128 + 128
+    - 256  # Layer 5: diffusion_size[6] + embedding_output_size = 128 + 128
+    - 256  # Layer 6: diffusion_size[7] + embedding_output_size = 128 + 128
+    - 256  # Layer 7: diffusion_size[8] + embedding_output_size = 128 + 128
 
 # -----------------------------------------------------------------
 
@@ -43,7 +51,3 @@ training_params:
   weight_decay: 0.000015     # From paper: 1.5e-5
   epochs: 1200               # From paper
   neighbour_radius_coeff: 0.0029  # From paper: α = 2.9e-3
-
-
-
-
