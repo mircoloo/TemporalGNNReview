@@ -11,9 +11,7 @@ class GeneralizedGraphDiffusion(torch.nn.Module):
 
     def forward(self, theta, T, x, A):
         Q = 0
-        for i in range(theta.shape[0]): # for each diffusion step
-            
-            print(f"{theta[i].shape=}\n{T[i].shape=}")
+        for i in range(theta.shape[0]): # for each diffusion step            
             Q += theta[i] * T[i] # scalar * (num_nodes x num_nodes)
         # Q is ((num_nodes * num_nodes) * (num_nodes * num_nodes)) @ (num_nodes, diffusion_size[i])
         x = self.fc((Q * A) @ x) #diffusion step input=diffusion_size[i], output=diffusion_size[i+1]

@@ -66,7 +66,7 @@ class DGDNN(nn.Module):
         theta_pos  = F.softplus(self.theta)             # >= 0
         theta_prob = F.softmax(self.theta, dim=-1)      # sum-to-1
 
-    
+        
         # for each diffusion layers
         for l in range(self.T.shape[0]):
             # pass the theta at layer l (shape (expansion_step))

@@ -65,7 +65,8 @@ class MyDataset(Dataset):
         directory_path = os.path.join(self.desti, f'{self.market}_{self.dataset_type}_{self.start}_{self.end}_{self.window}')
         data_path = os.path.join(directory_path, f'graph_{idx}.pt')
         if os.path.exists(data_path):
-            return torch.load(data_path, weights_only=False)
+            sample = torch.load(data_path, weights_only=False)
+            return sample
         else:
             raise FileNotFoundError(f"No graph data found for index {idx}")
 
