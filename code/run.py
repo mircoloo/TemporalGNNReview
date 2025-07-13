@@ -149,7 +149,7 @@ def main(args: argparse.Namespace) -> None:
             train_loss += loss.item()
 
         # --- Validation step ---
-        if epoch % 20 == 0:
+        if epoch % 30 == 0:
             val_loss, val_acc, val_f1 = 0.0, 0.0, 0.0
             model_DGDNN.eval() # Switch to evaluation mode
             with torch.no_grad():
