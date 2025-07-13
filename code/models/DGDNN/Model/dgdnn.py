@@ -1,103 +1,148 @@
 import torch
 import torch.nn as nn
-
 import torch.nn.functional as F
-from .GGD import GeneralizedGraphDiffusion
-from .CatAttn import CatMultiAttn
+from ggd import GeneralizedGraphDiffusion
+from catattn import CatMultiAttn
+
 
 class DGDNN(nn.Module):
-    def __init__(self, diffusion_size: list # e.g., [F0, F1, F2]
-                 ,embedding_size: list # e.g., [F1+F1, E1, E1+F2, E2, ...]
-                 , classes
-                 ,layers
-                 , num_nodes
-                 , expansion_step
-                 , num_heads
-                 , active
-                 , timestamp
-                 ):
-        #assert len(embedding_size) == 2*layers, f"len of emb_size must have 2* the num_layers, current len_emb_size:{len(embedding_size)} instead of {layers*2}"
-        assert len(diffusion_size) == layers + 1, f"The length of diffusion size must be one more than the length of layers. Obtained {len(diffusion_size)} and expected {len(layers)+1}"
-        assert diffusion_size[0] == 5*timestamp, f"First diffusion size dimension must match timestamp*num_features, expected {timestamp*5} got {diffusion_size[0]}"
-        assert len(embedding_size) == 2*layers, f"The length of embedding sizes must be 2*num_layers, one for input and one for output dimension... Expected {2*layers} got {len(embedding_size)}"
-
+    def __init__(
+        self,
+        diffusion_size: list,     # e.g., [F0, F1, F2]
+        embedding_size: list,     # e.g., [F1+F1, E1, E1+F2, E2, ...]
+        embedding_hidden_size: int,
+        embedding_output_size: int,
+        raw_feature_size: int,
+        classes: int,
+        layers: int,
+        num_nodes: int,
+        expansion_step: int,      # number of diffusion basis per layer
+        num_heads: int,
+        active: list              # bool per layer
+    ):
         super().__init__()
 
-        # T =  transition matrix params [1 x layer, expansion_step, num_nodes, num_nodes]
-        # theta = weight coefficents [1 x layer, expansion step]
-        self.T     = nn.Parameter(torch.empty(layers,
-                                              expansion_step,
-                                              num_nodes,
-                                              num_nodes))
+        # Transition matrices and weights
+        self.T = nn.Parameter(torch.empty(layers, expansion_step, num_nodes, num_nodes))
         self.theta = nn.Parameter(torch.empty(layers, expansion_step))
 
-        # Initialize the diffusion layers other modules
-        #input dim = diffusionsize[i], ouput dim = diffusionsize[i+1]
-        self.diffusion_layers = nn.ModuleList(
-            [GeneralizedGraphDiffusion(diffusion_size[i],
-                                       diffusion_size[i + 1],
-                                       active[i])
-             for i in range(len(diffusion_size) - 1)]  ## Various layers of graph diffusions
-        )
-        self.cat_attn_layers = nn.ModuleList(
+        # Graph diffusion layers
+        self.diffusion_layers = nn.ModuleList([
+            GeneralizedGraphDiffusion(diffusion_size[i], diffusion_size[i + 1], active[i])
+            for i in range(len(diffusion_size) - 1)
+        ])
 
-            #input = embedding_size[even] output = embedding_size[odd]
-            [CatMultiAttn(embedding_size[2 * i],
-                          num_heads,
-                          embedding_size[2 * i + 1],
-                          active[i],
-                          timestamp)
-             for i in range(len(embedding_size) // 2)] ## List of CatMultiAttn, each for each layer
-        )
-        self.linear = nn.Linear(embedding_size[-1] * timestamp, classes)
+        # Self-attention layers over concatenated feature matrices
+        self.cat_attn_layers = nn.ModuleList([
+            CatMultiAttn(
+                input_time=embedding_size[i],        # e.g., input = concat[h, h_prime] dim
+                num_heads=num_heads,
+                hidden_dim=embedding_hidden_size,      
+                output_dim=embedding_output_size,
+                use_activation=active[i]             
+            )
+            for i in range(len(embedding_size))
+        ])
+        # Transform raw features to be divisible by num_heads
+        self.raw_h_prime = nn.Linear(diffusion_size[0], raw_feature_size)
+        # Final classifier
+        self.linear = nn.Linear(embedding_output_size, classes)
 
-        # Perform smart initialization
+        # Init transition weights
         self._init_transition_params()
 
     def _init_transition_params(self):
-        # Xavier init for transition matrices
         nn.init.xavier_uniform_(self.T)
-        # Uniform or constant for theta
-        nn.init.constant_(self.theta, 1.0 / self.theta.size(-1))
+        nn.init.constant_(self.theta, 1.0 / self.theta.size(-1))  # normalize
 
-    def forward(self, X, A):
-        z, h = X, X # z output of the diffusion mechanism and h output of CatAtnn #z shape (num_nodes, timestamp*features) #h shape (num_nodes, timestamp*features)
-        # Optionally constrain theta to be non-negative or sum-to-one:
-        theta_pos  = F.softplus(self.theta)             # >= 0
-        theta_prob = F.softmax(self.theta, dim=-1)      # sum-to-1
+    def forward(self, X: torch.Tensor, A: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            X: [N, F_in]  - node features
+            A: [N, N]     - adjacency matrix
+        Returns:
+            logits: [N, classes]
+        """
+        h = X              # diffused features
+        h_prime = X              # original features for attention fusion
+        theta_soft = F.softmax(self.theta, dim=-1)  # normalize theta to summation of 1 per layer as the regularization
 
+        for l in range(len(self.diffusion_layers) - 1):
+            # Diffuse using learned linear combination of T_slices
+            h = self.diffusion_layers[l](theta_soft[l], self.T[l], h, A)  # [N, diffusion_size]
+
+            # Combine with prior representation using CatMultiAttn
+            if l == 0:
+                h_prime = self.cat_attn_layers[l](h, self.raw_h_prime(h_prime))  # [N, embedding_output_size]
+            
+            else:
+                h_prime = h_prime + self.cat_attn_layers[l](h, h_prime)
+
+        # Final projection to class logits
+        out = self.linear(h_prime)  # [N, classes]
         
-        # for each diffusion layers
-        for l in range(self.T.shape[0]):
-            # pass the theta at layer l (shape (expansion_step))
-            # pass the difufsion layers l (shape (expansion_step, n_nodes, n_nodes))
-            # pass last z
-            # pass adjacency matrix
-            z = self.diffusion_layers[l](theta_pos[l], self.T[l], z, A) # shape (num_nodes, diffusion_size[l+1])
-            # h is new h from diffusion and h_prime is previous h prime
-            h = self.cat_attn_layers[l](h=z, h_prime=h)
+        return out
+
+
+## For those who use fast implementation version.
+
+# class DGDNN(nn.Module):
+#     def __init__(
+#         self,
+#         diffusion_size: list,
+#         embedding_size: list,
+#         embedding_hidden_size: int,
+#         embedding_output_size: int,
+#         raw_feature_size: int,
+#         classes: int,
+#         layers: int,
+#         num_heads: int,
+#         active: list
+#     ):
+#         super().__init__()
+#         assert len(diffusion_size) - 1 == layers, "Mismatch in diffusion layers"
+#         assert len(embedding_size) == layers, "Mismatch in attention layers"
+
+#         self.layers = layers
+
+#         self.diffusion_layers = nn.ModuleList([
+#             GeneralizedGraphDiffusion(diffusion_size[i], diffusion_size[i + 1], active[i])
+#             for i in range(layers)
+#         ])
+
+#         self.cat_attn_layers = nn.ModuleList([
+#             CatMultiAttn(
+#                 input_time=embedding_size[i],        # e.g., input = concat[h, h_prime] dim
+#                 num_heads=num_heads,
+#                 hidden_dim=embedding_hidden_size,      
+#                 output_dim=embedding_output_size,
+#                 use_activation=active[i]             
+#             )
+#             for i in range(len(embedding_size))
+#         ])
+#         # Transform raw features to be divisible by num_heads
+#         self.raw_h = nn.Linear(diffusion_size[0], raw_feature_size)
         
-        return self.linear(h)
+#         self.linear = nn.Linear(embedding_output_size, classes)
 
-# For those who use fast implementation version.
-#class DGDNN(nn.Module):
-    #def __init__(self, diffusion_size, embedding_size, classes, num_heads, active, timestamp, layers):
-        #super(DGDNN, self).__init__()
+#     def forward(self, X: torch.Tensor, A: torch.Tensor, W: torch.Tensor) -> torch.Tensor:
+#         """
+#         Args:
+#             X: [N, F_in]         - node features
+#             A: [2, E]            - adjacency (sparse index)
+#             W: [E]               - edge weights (if using sparse edge_index)
 
-        # Initialize different module layers at all levels
-        #self.diffusion_layers = nn.ModuleList(
-            #[GeneralizedGraphDiffusion(diffusion_size[i], diffusion_size[i + 1], active[i]) for i in range(len(diffusion_size) - 1)])
-        #self.cat_attn_layers = nn.ModuleList(
-            #[CatMultiAttn(embedding_size[2 * i], num_heads, embedding_size[2 * i + 1], active[i], timestamp) for i in range(len(embedding_size) // 2)])
-        #self.linear = nn.Linear(embedding_size[-1]*timestamp, classes)
+#         Returns:
+#             logits: [N, classes]
+#         """
+#         z = X
+#         h = X
 
-    #def forward(self, X, A, W):
-        #z, h = X, X
+#         for l in range(self.layers):
+#             z = self.diffusion_layers[l](z, A, W)  # GeneralizedGraphDiffusion (e.g. GCNConv)
+#             if l == 0:
+#                 h = self.cat_attn_layers[l](z, self.raw_h(h))
+#             else:
+#                 h = h + self.cat_attn_layers[l](z, h)
 
-        #for l in range(layers):
-            #z = self.diffusion_layers[l](z, A, W)
-            #h = self.cat_attn_layers[l](z, h)
-
-        #h = self.linear(h)
-
-        #return h
+#         return self.linear(h)  # [N, classes]

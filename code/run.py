@@ -10,6 +10,9 @@ from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import to_dense_adj
 from tqdm import tqdm
+import os 
+import sys
+
 
 
 # --- Local Imports ---
@@ -104,6 +107,9 @@ def main(args: argparse.Namespace) -> None:
     model_DGDNN = DGDNN(
         diffusion_size=model_param['diffusion_size'],
         embedding_size=model_param['embedding_size'],
+        embedding_hidden_size = model_param['embedding_hidden_size'],
+        embedding_output_size = model_param['embedding_output_size'],
+        raw_feature_size = model_param['raw_feature_size'],
         classes=1,
         layers=model_param['layers'],
         num_nodes=num_nodes,
@@ -149,7 +155,7 @@ def main(args: argparse.Namespace) -> None:
             train_loss += loss.item()
 
         # --- Validation step ---
-        if epoch % 30 == 0:
+        if epoch % 20 == 0:
             val_loss, val_acc, val_f1 = 0.0, 0.0, 0.0
             model_DGDNN.eval() # Switch to evaluation mode
             with torch.no_grad():
