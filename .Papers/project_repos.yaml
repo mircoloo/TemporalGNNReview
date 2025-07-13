@@ -1,0 +1,17 @@
+DA-RNN:
+  url: https://github.com/KurochkinAlexey/DA-RNN
+
+Adv-ALSTM:
+  url: https://github.com/fulifeng/Adv-ALSTM
+
+STHAN-SR:
+  url: https://github.com/midas-research/sthan-sr-aaai
+
+HATS:
+  url: https://github.com/dmis-lab/hats
+
+HyperStockGraph:
+  url: https://github.com/lixiaojieff/HGTAN
+
+GraphWaveNet:
+  url: https://github.com/nnzhan/Graph-WaveNet

@@ -1,0 +1,49 @@
+# -----------------------------------------------------------------
+# Configuration for the SSE market
+# Parameters are set based on the DGDNN paper and calculated for model compatibility.
+# -----------------------------------------------------------------
+
+# Parameters related to data loading and time periods
+dataset_params:
+  market: 'SSE'
+  # Note: Date ranges below are illustrative. Adjust them to your specific dataset splits.
+  train_sedate: ['2016-05-01', '2017-06-30']
+  val_sedate: ['2017-07-01', '2017-12-31']
+  test_sedate: ['2018-01-01', '2019-12-31']
+  window_size: 14  # From paper: τ = 19
+  use_fast_approximation: false
+
+# -----------------------------------------------------------------
+
+# Parameters defining the DGDNN model architecture
+model_params:
+  layers: 6          # From paper: L = 8
+  expansion_step: 7  # From paper: K = 9
+  num_heads: 2      # From paper they should be 3
+  # active_layers determines which diffusion layers are active. This is a suggested setup.
+  active_layers: [True, False, False, False, False, False]
+
+  # The first element must be 5 * window_size = 5 * 19 = 95.
+  # The following is a suggested architecture with decreasing feature dimensions.
+  diffusion_size: [70, 589, 532, 456, 380, 304, 228] #the first must be the number of parameters x timestamps
+  #diffusion_size: [95, 64, 128, 256, 256, 256, 128]
+  # embedding_size length length must be layers * 2
+  embedding_size: [36, 64, 92, 50, 74, 38, 58, 24, 40, 12, 24, 10]
+
+  
+  embedding_hidden_size: 1024
+  embedding_output_size: 256
+  raw_feature_size: 64
+
+# -----------------------------------------------------------------
+
+# Parameters for the training process
+training_params:
+  learning_rate: 0.0002      # From paper: 2e-4
+  weight_decay: 0.000015     # From paper: 1.5e-5
+  epochs: 1200               # From paper
+  neighbour_radius_coeff: 0.0029  # From paper: α = 2.9e-3
+
+
+
+
