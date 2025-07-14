@@ -26,6 +26,33 @@ class DGDNN(nn.Module):
         self.T = nn.Parameter(torch.empty(layers, expansion_step, num_nodes, num_nodes))
         self.theta = nn.Parameter(torch.empty(layers, expansion_step))
 
+        print(f"Diffusion size: {diffusion_size} \n Embedding size: {embedding_size} \n ")
+
+        if num_heads != 2:
+            # compute a scaling factor (float!) relative to 2-head base
+            scale = num_heads / 2.0    # e.g. 3 / 2 = 1.5
+
+            # scale the scalar sizes
+            embedding_output_size  = int(round(embedding_output_size   * scale))
+            raw_feature_size = int(round(raw_feature_size  * scale))
+
+            # leave the first element of diffusion_size unchanged,
+            # scale the rest via a list comprehension
+            diffusion_size = [
+                diffusion_size[0]
+            ] + [
+                int(round(x * scale))
+                for x in diffusion_size[1:]
+            ]
+
+            # similarly scale each per-layer emb_size
+            embedding_size = [
+                int(round(x * scale))
+                for x in embedding_size
+            ]
+
+
+
         # Graph diffusion layers
         self.diffusion_layers = nn.ModuleList([
             GeneralizedGraphDiffusion(diffusion_size[i], diffusion_size[i + 1], active[i])
@@ -43,6 +70,8 @@ class DGDNN(nn.Module):
             )
             for i in range(len(embedding_size))
         ])
+
+        print(f"Diffusion size 2: {diffusion_size} \n Embedding size 2: {embedding_size} \n ")
         # Transform raw features to be divisible by num_heads
         self.raw_h_prime = nn.Linear(diffusion_size[0], raw_feature_size)
         # Final classifier

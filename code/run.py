@@ -8,11 +8,13 @@ PROJECT_PATH = Path(__file__).parent.resolve()
 sys.path.append(str(PROJECT_PATH))
 sys.path.append(str(PROJECT_PATH / "models" / "DGDNN" / "Model"))
 
+from model_runners.dgdnn_runner import DGDNNRunner
+from model_runners.graphwavenet_runner import GraphWaveNetRunner
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import yaml
-from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef
+from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, recall_score
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import to_dense_adj
 from tqdm import tqdm
@@ -107,113 +109,69 @@ def main(args: argparse.Namespace) -> None:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Using device: {device}")
     
-    DGDNN = load_model('DGDNN')
     
-    model_DGDNN = DGDNN(
-        diffusion_size=model_param['diffusion_size'],
-        embedding_size=model_param['embedding_size'],
-        embedding_hidden_size = model_param['embedding_hidden_size'],
-        embedding_output_size = model_param['embedding_output_size'],
-        raw_feature_size = model_param['raw_feature_size'],
-        classes=1,
-        layers=model_param['layers'],
-        num_nodes=num_nodes,
-        expansion_step=model_param['expansion_step'],
-        num_heads=model_param['num_heads'],
-        active=model_param['active_layers']
-    ).to(device)
-    
-    print(f"Model parameters: {sum([p.numel() for p in model_DGDNN.parameters()]):,}")
 
-    # ------------------ 5. TRAIN THE MODEL ------------------
-    optimizer = optim.Adam(model_DGDNN.parameters(), lr=train_param['learning_rate'], weight_decay=train_param['weight_decay'])
+    # ------------------ 5. TRAIN AND TEST THE MODEL USING THE RUNNER ------------------
+    optimizer = optim.Adam(model_DGDNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
     criterion = nn.BCEWithLogitsLoss()
     num_epochs = train_param['epochs']
-    alpha = train_param.get('neighbour_radius_coeff', 0.0) # Get alpha, default to 0 if not present
+    alpha = train_param.get('neighbour_radius_coeff', 0.0)
+
+    if args.model == 'dgdnn':
+        DGDNN = load_model('DGDNN')
     
-    model_DGDNN.train()
+        model_DGDNN = DGDNN(
+            diffusion_size=model_param['diffusion_size'],
+            embedding_size=model_param['embedding_size'],
+            embedding_hidden_size = model_param['embedding_hidden_size'],
+            embedding_output_size = model_param['embedding_output_size'],
+            raw_feature_size = model_param['raw_feature_size'],
+            classes=1,
+            layers=model_param['layers'],
+            num_nodes=num_nodes,
+            expansion_step=model_param['expansion_step'],
+            num_heads=model_param['num_heads'],
+            active=model_param['active_layers']
+        ).to(device)
     
-    print("\n" + "="*10 + " TRAINING " + "="*10)
-    for epoch in tqdm(range(num_epochs + 1), desc="Epochs"):
-        train_loss = 0.0
-        for train_sample in train_loader:
-            if train_sample.x.shape[-1] != 5 * window_size:
-                print(f"Warning: Skipping sample with incorrect shape: {train_sample.x.shape}")
-                continue
-            
-            train_sample = train_sample.to(device)
-            optimizer.zero_grad()
-            
-            A = to_dense_adj(train_sample.edge_index, batch=train_sample.batch, edge_attr=train_sample.edge_attr, max_num_nodes=num_nodes).squeeze(0)
-            C = train_sample.y.unsqueeze(dim=1).float()
-            
-            outputs = model_DGDNN(train_sample.x, A)
-            
-            # Loss from paper: L_CE - alpha * L_neighbor_dist + L_theta_reg
-            loss = criterion(outputs, C) \
-                   - alpha * neighbor_distance_regularizer(model_DGDNN.theta) \
-                   + theta_regularizer(model_DGDNN.theta)
-            
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
+        print(f"Model parameters: {sum([p.numel() for p in model_DGDNN.parameters()]):,}")
+        runner = DGDNNRunner(model_DGDNN, device)
 
-        # --- Validation step ---
-        if epoch % 1 == 0:
-            val_loss, val_acc, val_f1 = 0.0, 0.0, 0.0
-            model_DGDNN.eval() # Switch to evaluation mode
-            with torch.no_grad():
-                for val_sample in validation_loader:
-                    if val_sample.x.shape[-1] != 5 * window_size: continue
-                    val_sample = val_sample.to(device)
-                    
-                    A = to_dense_adj(val_sample.edge_index, batch=val_sample.batch, edge_attr=val_sample.edge_attr, max_num_nodes=num_nodes).squeeze(0)
-                    out = model_DGDNN(val_sample.x, A)
-                    
-                    y_true = val_sample.y.detach().cpu()
-                    y_pred = (out > 0).float().detach().cpu().squeeze()
-                    
-                    val_loss += criterion(out, val_sample.y.unsqueeze(1).float()).item()
-                    val_acc += accuracy_score(y_true, y_pred)
-                    val_f1 += f1_score(y_true, y_pred, zero_division=0)
-            
-            model_DGDNN.train() # Switch back to training mode
-            avg_val_loss = val_loss / len(validation_loader)
-            avg_val_acc = val_acc / len(validation_loader)
-            avg_val_f1 = val_f1 / len(validation_loader)
-            print(f"Epoch {epoch}/{num_epochs} -> Train Loss: {train_loss:.4f}, Val Loss: {avg_val_loss:.4f}, Val Acc: {avg_val_acc:.4f}, Val F1: {avg_val_f1:.4f}")
+        runner.train(
+            train_loader, validation_loader, optimizer, criterion, num_epochs,
+            alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes)
+        print("✅ Training finished.")
 
-    print("✅ Training finished.")
+        print("\n" + "="*10 + " TESTING " + "="*10)
+        all_logits, all_labels = runner.test(test_loader, window_size, num_nodes)
+        labels_cpu = all_labels.detach().cpu()
+        preds_cpu = (all_logits > 0).float().detach().cpu()
+        test_acc = accuracy_score(labels_cpu, preds_cpu)
+        test_f1 = f1_score(labels_cpu, preds_cpu)
+        test_mcc = matthews_corrcoef(labels_cpu, preds_cpu)
+        test_recall = recall_score(labels_cpu, preds_cpu)
 
-    # ------------------ 6. TEST THE MODEL ------------------
-    print("\n" + "="*10 + " TESTING " + "="*10)
-    model_DGDNN.eval()
-    all_logits = torch.tensor([]).to(device)
-    all_labels = torch.tensor([]).to(device)
-
-    with torch.no_grad():
-        for test_sample in test_loader:
-            if test_sample.x.shape[-1] != 5 * window_size: continue
-            test_sample = test_sample.to(device)
-            
-            A = to_dense_adj(test_sample.edge_index, batch=test_sample.batch, edge_attr=test_sample.edge_attr, max_num_nodes=num_nodes).squeeze(0)
-            
-            out = model_DGDNN(test_sample.x, A)
-            
-            all_logits = torch.cat((all_logits, out.squeeze()), dim=0)
-            all_labels = torch.cat((all_labels, test_sample.y), dim=0)
-
-    # Calculate final metrics
-    labels_cpu = all_labels.detach().cpu()
-    preds_cpu = (all_logits > 0).float().detach().cpu()
-    
-    test_acc = accuracy_score(labels_cpu, preds_cpu)
-    test_f1 = f1_score(labels_cpu, preds_cpu)
-    test_mcc = matthews_corrcoef(labels_cpu, preds_cpu)
-
-    print(f"Test Accuracy: {test_acc:.4f}")
-    print(f"Test F1-Score: {test_f1:.4f}")
-    print(f"Test MCC: {test_mcc:.4f}")
+        print(f"Test Accuracy: {test_acc:.4f}")
+        print(f"Test F1-Score: {test_f1:.4f}")
+        print(f"Test MCC: {test_mcc:.4f}")
+        print(f"Test Recall: {test_recall:.4f}")
+        output_model_path = MODELS_WEIGHTS_PATH / f"{args.model}_{market_name}_weights.pth"
+        torch.save(model_DGDNN.state_dict(), output_model_path)
+        print(f"💾 Model weights saved to: {output_model_path}")
+        log_file_name = f"{market_name}_run.log"
+        log_path = PROJECT_PATH / 'logs'
+        log_test_results(log_file_name, log_path, epochs=num_epochs, test_acc=test_acc, test_f1=test_f1, test_mcc=test_mcc, test_recall=test_recall)
+        print(f"📄 Log file saved to: {log_path / log_file_name}")
+    elif args.model == 'graphwavenet':
+        # Example placeholder for GraphWaveNet logic
+        print("GraphWaveNet model selected. Please implement GraphWaveNetRunner usage here.")
+        # Example:
+        # model_GWN = ... # Instantiate your GraphWaveNet model
+        # optimizer = ...
+        # runner = GraphWaveNetRunner(model_GWN, device)
+        # runner.train(...)
+        # all_logits, all_labels = runner.test(...)
+        # ... (metrics and saving logic)
     
     # ------------------ 7. SAVE RESULTS AND MODEL ------------------
     output_model_path = MODELS_WEIGHTS_PATH / f"model_DGDNN_{market_name}_weights.pth"
@@ -229,7 +187,7 @@ def main(args: argparse.Namespace) -> None:
 if __name__ == '__main__':
     # Create the parser
     parser = argparse.ArgumentParser(description="Train and evaluate DGDNN model for a specific stock market.")
-
+    parser.add_argument('--model', type=str, required=True, choices=['dgdnn', 'graphwavenet'])
     # Add the required --market argument
     parser.add_argument(
         '--market',

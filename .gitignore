@@ -3,8 +3,10 @@ token
 *.err
 *.out
 *.slurm
+*.log
 #Directories
 code/data/*
 code/tesi_venv/*
 code/logs/*
+
 
