@@ -117,10 +117,12 @@ class MyDataset(Dataset):
                             dates.add(line[0][:10])
                         elif end_dt < current_date_dt <= search_until_dt:
                             after_end_dates.add(line[0][:10])
-                        else:
-                            not_inserted_companies.append(company_ticker)
                     except (ValueError, IndexError):
                         continue
+            if not dates:
+                print(f"Warning: No valid dates found for {company_ticker} in the specified range.")
+                not_inserted_companies.append(company_ticker)
+                continue
             
             if dates: date_sets_valid.append(dates)
             if after_end_dates: after_end_date_sets_valid.append(after_end_dates)
