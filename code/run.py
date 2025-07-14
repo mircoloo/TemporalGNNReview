@@ -112,10 +112,6 @@ def main(args: argparse.Namespace) -> None:
     
 
     # ------------------ 5. TRAIN AND TEST THE MODEL USING THE RUNNER ------------------
-    optimizer = optim.Adam(model_DGDNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
-    criterion = nn.BCEWithLogitsLoss()
-    num_epochs = train_param['epochs']
-    alpha = train_param.get('neighbour_radius_coeff', 0.0)
 
     if args.model == 'dgdnn':
         DGDNN = load_model('DGDNN')
@@ -137,6 +133,10 @@ def main(args: argparse.Namespace) -> None:
         print(f"Model parameters: {sum([p.numel() for p in model_DGDNN.parameters()]):,}")
         runner = DGDNNRunner(model_DGDNN, device)
 
+        optimizer = optim.Adam(model_DGDNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
+        criterion = nn.BCEWithLogitsLoss()
+        num_epochs = train_param['epochs']
+        alpha = train_param.get('neighbour_radius_coeff', 0.0)
         runner.train(
             train_loader, validation_loader, optimizer, criterion, num_epochs,
             alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes)
@@ -163,25 +163,57 @@ def main(args: argparse.Namespace) -> None:
         log_test_results(log_file_name, log_path, epochs=num_epochs, test_acc=test_acc, test_f1=test_f1, test_mcc=test_mcc, test_recall=test_recall)
         print(f"📄 Log file saved to: {log_path / log_file_name}")
     elif args.model == 'graphwavenet':
-        # Example placeholder for GraphWaveNet logic
-        print("GraphWaveNet model selected. Please implement GraphWaveNetRunner usage here.")
-        # Example:
-        # model_GWN = ... # Instantiate your GraphWaveNet model
-        # optimizer = ...
-        # runner = GraphWaveNetRunner(model_GWN, device)
-        # runner.train(...)
-        # all_logits, all_labels = runner.test(...)
-        # ... (metrics and saving logic)
+        print("GraphWaveNet model selected. Running training and evaluation pipeline.")
+        GWN = load_model('GraphWaveNet')
+        model_GWN = GWN(
+            device=device,
+            num_nodes=num_nodes,
+            dropout=0.3,
+            supports=None,
+            gcn_bool=True,
+            addaptadj=True,
+            aptinit=None,
+            in_dim=window_size * 5,  # <-- set this correctly
+            out_dim=1,                # <-- set this correctly
+            residual_channels=32,
+            dilation_channels=32,
+            skip_channels=256,
+            end_channels=512,
+            kernel_size=2,
+            blocks=1,
+            layers=8
+        ).to(device)
+        runner = GraphWaveNetRunner(model_GWN, device)
+        print(f"Model parameters: {sum([p.numel() for p in model_GWN.parameters()]):,}")
+
+        optimizer = optim.Adam(model_GWN.parameters(), lr=0.001)
+        criterion = nn.CrossEntropyLoss()
+        num_epochs = train_param['epochs']
+
+        runner.train(train_loader, validation_loader, optimizer, criterion, num_epochs, window_size, 5)
+        print("✅ Training finished.")
+
+        print("\n" + "="*10 + " TESTING " + "="*10)
+        all_logits, all_labels = runner.test(test_loader, window_size, 5)
+        preds_cpu = torch.argmax(all_logits, dim=-1).detach().cpu()
+        labels_cpu = all_labels.detach().cpu()
+        test_acc = accuracy_score(labels_cpu, preds_cpu)
+        test_f1 = f1_score(labels_cpu, preds_cpu, average='macro')
+        test_mcc = matthews_corrcoef(labels_cpu, preds_cpu)
+        test_recall = recall_score(labels_cpu, preds_cpu, average='macro')
+
+        print(f"Test Accuracy: {test_acc:.4f}")
+        print(f"Test F1-Score: {test_f1:.4f}")
+        print(f"Test MCC: {test_mcc:.4f}")
+        print(f"Test Recall: {test_recall:.4f}")
+        output_model_path = MODELS_WEIGHTS_PATH / f"{args.model}_{market_name}_weights.pth"
+        torch.save(model_GWN.state_dict(), output_model_path)
+        print(f"💾 Model weights saved to: {output_model_path}")
+        log_file_name = f"{market_name}_run.log"
+        log_path = PROJECT_PATH / 'logs'
+        log_test_results(log_file_name, log_path, epochs=num_epochs, test_acc=test_acc, test_f1=test_f1, test_mcc=test_mcc, test_recall=test_recall)
+        print(f"📄 Log file saved to: {log_path / log_file_name}")
     
-    # ------------------ 7. SAVE RESULTS AND MODEL ------------------
-    output_model_path = MODELS_WEIGHTS_PATH / f"model_DGDNN_{market_name}_weights.pth"
-    torch.save(model_DGDNN.state_dict(), output_model_path)
-    print(f"💾 Model weights saved to: {output_model_path}")
-    
-    log_file_name = f"{market_name}_run.log"
-    log_path = PROJECT_PATH / 'logs'
-    log_test_results(log_file_name, log_path, epochs=num_epochs, test_acc=test_acc, test_f1=test_f1, test_mcc=test_mcc)
-    print(f"📄 Log file saved to: {log_path / log_file_name}")
 
 
 if __name__ == '__main__':
