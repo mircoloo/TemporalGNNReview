@@ -8,5 +8,5 @@ token
 code/data/*
 code/tesi_venv/*
 code/logs/*
-
+cluster/*
 
