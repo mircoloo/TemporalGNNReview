@@ -15,10 +15,10 @@ dataset_params:
 
 # Parameters defining the NEW DGDNN model architecture
 model_params:
-  layers: 8          # From paper: L = 8
-  expansion_step: 9  # From paper: K = 9
-  num_heads: 2      # From paper should be 3
-  active_layers: [true, true, true, true, false, false, false, false]
+  layers: 9 
+  expansion_step: 10  # From paper: K = 9
+  num_heads: 3     # From paper should be 3
+  active_layers: [true, true, true, true, false, false, false, false, true]
 
   # --- New simplified attention parameters ---
   # The output size for ALL attention layers. From paper's "embedding dimension".
@@ -30,7 +30,7 @@ model_params:
 
   # --- Calculated lists based on the new rules ---
   # Length must be layers + 1 = 9. First element must be 5 * window_size = 95.
-  diffusion_size: [110, 128, 256, 512, 256, 128, 128, 128, 128]
+  diffusion_size: [110, 128, 256, 512, 256, 128, 128, 128, 128, 128]
 
   # Length must be layers = 8. Values are calculated input dimensions for each attention layer.
   embedding_size:
@@ -42,6 +42,7 @@ model_params:
     - 256  # Layer 5: diffusion_size[6] + embedding_output_size = 128 + 128
     - 256  # Layer 6: diffusion_size[7] + embedding_output_size = 128 + 128
     - 256  # Layer 7: diffusion_size[8] + embedding_output_size = 128 + 128
+    - 256  # Layer 8: diffusion_size[9] + embedding_output_size = 128 + 128
 
 # -----------------------------------------------------------------
 
@@ -50,4 +51,4 @@ training_params:
   learning_rate: 0.0002      # From paper: 2e-4
   weight_decay: 0.000015     # From paper: 1.5e-5
   epochs: 1200               # From paper
-  neighbour_radius_coeff: 0.0029  # From paper: α = 2.9e-3
+  neighbour_radius_coeff: 2.7e-3  # From paper: α = 2.9e-3

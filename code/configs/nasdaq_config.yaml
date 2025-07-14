@@ -16,8 +16,8 @@ dataset_params:
 model_params:
   layers: 8          # From paper: L = 8
   expansion_step: 9  # From paper: K = 9
-  num_heads: 2      # From paper should be 3
-  active_layers: [true, true, true, true, false, false, false, false]
+  num_heads: 3      # From paper should be 3
+  active_layers: [true, true, true, true, true, true, true, true]
 
   # --- New simplified attention parameters ---
   # The output size for ALL attention layers. From paper's "embedding dimension".
@@ -48,4 +48,4 @@ training_params:
   learning_rate: 0.0002      # From paper: 2e-4
   weight_decay: 0.000015     # From paper: 1.5e-5
   epochs: 1200               # From paper
-  neighbour_radius_coeff: 0.0029  # From paper: α = 2.9e-3
+  neighbour_radius_coeff: 2.9e-3  # From paper: α = 2.9e-3
