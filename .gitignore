@@ -7,6 +7,7 @@ token
 #Directories
 code/data/*
 code/tesi_venv/*
-code/logs/*
 cluster/*
-
+code/models/GraphWaveNet/data/
+code/models/weights/
+code/logs/

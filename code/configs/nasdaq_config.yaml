@@ -27,7 +27,6 @@ model_params:
   # The size the raw features are projected to. Must be divisible by num_heads (3). 96 is a good choice.
   raw_feature_size: 96
 
-  # --- Calculated lists based on the new rules ---
   diffusion_size: [95, 128, 256, 512, 256, 128, 128, 128, 128]
 
   # Length must be layers = 8. Values are calculated input dimensions for each attention layer.

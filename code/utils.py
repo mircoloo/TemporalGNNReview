@@ -6,7 +6,7 @@ from models.DGDNN.Model.dgdnn import DGDNN
 import models.DGDNN.Model.ggd
 import models.DGDNN.Model.catattn
 from models.GraphWaveNet.model import gwnet
-
+from models.DARNN.DARNN import DARNN
 from pathlib import Path
 from datetime import datetime
 import pandas as pd 
@@ -36,6 +36,8 @@ def load_model(model_name: str):
             return DGDNN
         case "GraphWaveNet":
             return gwnet
+        case "DARNN":
+            return DARNN
         case _:  # default case for any other model name
             raise ValueError(f"Unknown model name: {model_name}")
         
