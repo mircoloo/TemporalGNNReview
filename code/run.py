@@ -14,12 +14,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import yaml
-from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, recall_score
+from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, mean_squared_error, recall_score
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import to_dense_adj
 from tqdm import tqdm
 
 
+torch.manual_seed(42)  # For reproducibility
 
 # --- Local Imports ---
 # Ensure these paths are correct relative to your project structure.
@@ -115,7 +116,6 @@ def main(args: argparse.Namespace) -> None:
 
     if args.model == 'dgdnn':
         DGDNN = load_model('DGDNN')
-    
         model_DGDNN = DGDNN(
             diffusion_size=model_param['diffusion_size'],
             embedding_size=model_param['embedding_size'],
@@ -173,13 +173,13 @@ def main(args: argparse.Namespace) -> None:
             gcn_bool=True,
             addaptadj=True,
             aptinit=None,
-            in_dim=window_size * 5,  # <-- set this correctly
-            out_dim=1,                # <-- set this correctly
-            residual_channels=32,
-            dilation_channels=32,
+            in_dim=5,  # <-- number of features
+            out_dim=1,                
+            residual_channels=256, 
+            dilation_channels=256,
             skip_channels=256,
             end_channels=512,
-            kernel_size=2,
+            kernel_size=1,
             blocks=1,
             layers=8
         ).to(device)
@@ -187,7 +187,7 @@ def main(args: argparse.Namespace) -> None:
         print(f"Model parameters: {sum([p.numel() for p in model_GWN.parameters()]):,}")
 
         optimizer = optim.Adam(model_GWN.parameters(), lr=0.001)
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.BCEWithLogitsLoss()
         num_epochs = train_param['epochs']
 
         runner.train(train_loader, validation_loader, optimizer, criterion, num_epochs, window_size, 5)
@@ -213,13 +213,27 @@ def main(args: argparse.Namespace) -> None:
         log_path = PROJECT_PATH / 'logs'
         log_test_results(log_file_name, log_path, epochs=num_epochs, test_acc=test_acc, test_f1=test_f1, test_mcc=test_mcc, test_recall=test_recall)
         print(f"📄 Log file saved to: {log_path / log_file_name}")
-    
+    elif args.model == 'darnn':
+        from model_runners.darnn_runner import DARNNRunner
+        DARNN = load_model('DARNN')
+        model_DARNN = DARNN(
+            100,
+            64,
+            64,
+            100
+        ).to(device)
+        print(f"Model parameters: {sum([p.numel() for p in model_DARNN.parameters()]):,}")
+        runner = DARNNRunner(model_DARNN, device)
+        optimizer = optim.Adam(model_DARNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
+        criterion = nn.BCEWithLogitsLoss()
+        runner.train(train_loader, validation_loader, optimizer, criterion, train_param['epochs'], seq_length=window_size)
+        
 
 
 if __name__ == '__main__':
     # Create the parser
     parser = argparse.ArgumentParser(description="Train and evaluate DGDNN model for a specific stock market.")
-    parser.add_argument('--model', type=str, required=True, choices=['dgdnn', 'graphwavenet'])
+    parser.add_argument('--model', type=str, required=True, choices=['dgdnn', 'graphwavenet', 'darnn'])
     # Add the required --market argument
     parser.add_argument(
         '--market',

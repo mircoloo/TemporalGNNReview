@@ -1,13 +1,11 @@
-from sklearn.metrics import recall_score
 from .base_runner import BaseModelRunner
 import torch
 from torch_geometric.utils import to_dense_adj
-from tqdm import tqdm
 
 class DGDNNRunner(BaseModelRunner):
     def train(self, train_loader, val_loader, optimizer, criterion, num_epochs, alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes, use_validation=True):
         self.model.train()
-        for epoch in tqdm(range(num_epochs + 1)):
+        for epoch in range(num_epochs + 1):
             train_loss = 0.0
             for train_sample in train_loader:
                 if train_sample.x.shape[-1] != 5 * window_size:
@@ -41,14 +39,13 @@ class DGDNNRunner(BaseModelRunner):
                         val_acc += accuracy_score(y_true, y_pred)
                         val_f1 += f1_score(y_true, y_pred, zero_division=0)
                         val_mcc += matthews_corrcoef(y_true, y_pred)
-                        val_recall = recall_score(y_true, y_pred, zero_division=0)
                         n_val += 1
                 if n_val > 0:
                     avg_val_loss = val_loss / n_val
                     avg_val_acc = val_acc / n_val
                     avg_val_f1 = val_f1 / n_val
                     avg_val_mcc = val_mcc / n_val
-                    print(f"Epoch {epoch}: Val Loss: {avg_val_loss:.4f}, Val Acc: {avg_val_acc:.4f}, Val F1: {avg_val_f1:.4f}, Val MCC: {avg_val_mcc:.4f}, Val Recall: {val_recall:.4f}")
+                    print(f"Epoch {epoch}: Val Loss: {avg_val_loss:.4f}, Val Acc: {avg_val_acc:.4f}, Val F1: {avg_val_f1:.4f}, Val MCC: {avg_val_mcc:.4f}")
                 self.model.train()
 
     def test(self, test_loader, window_size, num_nodes):
