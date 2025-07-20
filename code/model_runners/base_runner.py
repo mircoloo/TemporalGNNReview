@@ -8,3 +8,4 @@ class BaseModelRunner:
 
     def test(self, test_loader, **kwargs):
         raise NotImplementedError
+    

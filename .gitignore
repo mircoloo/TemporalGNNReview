@@ -11,3 +11,5 @@ cluster/*
 code/models/GraphWaveNet/data/
 code/models/weights/
 code/logs/
+code/sbatch_outputs
+code/sbatch_scripts

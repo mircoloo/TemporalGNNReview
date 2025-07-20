@@ -1,6 +1,6 @@
 from .base_runner import BaseModelRunner
 import torch
-from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef
+from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, recall_score
 from torch_geometric.utils import to_dense_adj
 
 
@@ -97,12 +97,6 @@ class GraphWaveNetRunner(BaseModelRunner):
                 preds = (torch.sigmoid(outputs) > 0.5).long()
                 all_preds.append(preds.cpu())           
                 all_targets.append(y.cpu())
-        if all_preds:
-            y_true = torch.cat(all_targets)
-            y_pred = torch.cat(all_preds)
-            acc = accuracy_score(y_true, y_pred)
-            f1 = f1_score(y_true, y_pred, average='weighted')
-            mcc = matthews_corrcoef(y_true, y_pred)
-            print(f"Test Accuracy: {acc:.4f} | F1 Score: {f1:.4f} | MCC: {mcc:.4f}")
-            
-        
+        y_pred = torch.cat(all_preds)
+        y_true = torch.cat(all_targets)
+        return y_pred, y_true

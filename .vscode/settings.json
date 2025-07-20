@@ -1,3 +1,6 @@
 {
-    "workbench.tree.indent": 20
+    "workbench.tree.indent": 20,
+    "python.analysis.extraPaths": [
+        "./code"
+    ]
 }
