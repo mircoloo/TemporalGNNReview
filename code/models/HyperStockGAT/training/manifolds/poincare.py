@@ -76,10 +76,21 @@ class PoincareBall(Manifold):
         gamma_1 = tanh(sqrt_c * u_norm) * u / (sqrt_c * u_norm)
         return gamma_1
 
+    # def logmap0(self, p, c):
+    #     sqrt_c = c ** 0.5
+    #     p_norm = p.norm(dim=-1, p=2, keepdim=True).clamp_min(self.min_norm)
+    #     scale = 1. / sqrt_c * artanh(sqrt_c * p_norm) / p_norm
+    #     return scale * p
+
+    # To solve the explosion
     def logmap0(self, p, c):
         sqrt_c = c ** 0.5
         p_norm = p.norm(dim=-1, p=2, keepdim=True).clamp_min(self.min_norm)
-        scale = 1. / sqrt_c * artanh(sqrt_c * p_norm) / p_norm
+        
+        # Clamp the argument of artanh
+        artanh_arg_logmap0 = (sqrt_c * p_norm).clamp(max=1.0 - self.eps[p.dtype])
+        
+        scale = 1. / sqrt_c * artanh(artanh_arg_logmap0) / p_norm
         return scale * p
 
     def mobius_add(self, x, y, c, dim=-1):

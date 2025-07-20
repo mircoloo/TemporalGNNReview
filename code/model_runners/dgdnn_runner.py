@@ -1,3 +1,4 @@
+from sklearn.metrics import f1_score, matthews_corrcoef, accuracy_score, mean_absolute_error, mean_squared_error, precision_score, recall_score
 from .base_runner import BaseModelRunner
 import torch
 from torch_geometric.utils import to_dense_adj
@@ -58,6 +59,10 @@ class DGDNNRunner(BaseModelRunner):
                 test_sample = test_sample.to(self.device)
                 A = to_dense_adj(test_sample.edge_index, batch=test_sample.batch, edge_attr=test_sample.edge_attr, max_num_nodes=num_nodes).squeeze(0)
                 out = self.model(test_sample.x, A)
-                all_logits = torch.cat((all_logits, out.squeeze()), dim=0)
-                all_labels = torch.cat((all_labels, test_sample.y), dim=0)
-        return all_logits, all_labels
+                y_pred = torch.cat((all_logits, out.squeeze()), dim=0)
+                y_yrue = torch.cat((all_labels, test_sample.y), dim=0)
+
+
+        return y_pred, y_yrue
+ 
+        

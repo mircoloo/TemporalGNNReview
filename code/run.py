@@ -18,7 +18,7 @@ from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, mean_sq
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import to_dense_adj
 from tqdm import tqdm
-
+from utils import load_model
 
 torch.manual_seed(42)  # For reproducibility
 
@@ -26,14 +26,18 @@ torch.manual_seed(42)  # For reproducibility
 # Ensure these paths are correct relative to your project structure.
 # You might need to adjust them if your project layout is different.
 try:
-    from models.DGDNN.Data.geometric_dataset_gen import MyDataset as MyGeometricDataset
-    from utils import (log_test_results, neighbor_distance_regularizer,
-                       theta_regularizer, load_model)
     from dataset_utils import filter_stocks_from_timeperiod, retrieve_company_list
+    from models.DGDNN.Data.geometric_dataset_gen import MyDataset as MyGeometricDataset
+    from utils import (neighbor_distance_regularizer,
+                       theta_regularizer, load_model, process_test_results)
 except ImportError as e:
-    print(f"Error importing local modules: {e}")
+    print(f"Error importing local modules in run.py: {repr(e)}")
     print("Please ensure your Python path is set up correctly and the necessary files exist.")
+except Exception as e:
+    print(f"Exiting due to import error: {repr(e)}")
+
     sys.exit(1)
+
 
 
 def main(args: argparse.Namespace) -> None:
@@ -116,6 +120,7 @@ def main(args: argparse.Namespace) -> None:
 
     if args.model == 'dgdnn':
         DGDNN = load_model('DGDNN')
+        model_param = model_param['DGDNN']
         model_DGDNN = DGDNN(
             diffusion_size=model_param['diffusion_size'],
             embedding_size=model_param['embedding_size'],
@@ -143,25 +148,10 @@ def main(args: argparse.Namespace) -> None:
         print("✅ Training finished.")
 
         print("\n" + "="*10 + " TESTING " + "="*10)
-        all_logits, all_labels = runner.test(test_loader, window_size, num_nodes)
-        labels_cpu = all_labels.detach().cpu()
-        preds_cpu = (all_logits > 0).float().detach().cpu()
-        test_acc = accuracy_score(labels_cpu, preds_cpu)
-        test_f1 = f1_score(labels_cpu, preds_cpu)
-        test_mcc = matthews_corrcoef(labels_cpu, preds_cpu)
-        test_recall = recall_score(labels_cpu, preds_cpu)
+        y_pred, y_true = runner.test(test_loader, window_size, num_nodes)
+        process_test_results(y_pred, y_true)
 
-        print(f"Test Accuracy: {test_acc:.4f}")
-        print(f"Test F1-Score: {test_f1:.4f}")
-        print(f"Test MCC: {test_mcc:.4f}")
-        print(f"Test Recall: {test_recall:.4f}")
-        output_model_path = MODELS_WEIGHTS_PATH / f"{args.model}_{market_name}_weights.pth"
-        torch.save(model_DGDNN.state_dict(), output_model_path)
-        print(f"💾 Model weights saved to: {output_model_path}")
-        log_file_name = f"{market_name}_run.log"
-        log_path = PROJECT_PATH / 'logs'
-        log_test_results(log_file_name, log_path, epochs=num_epochs, test_acc=test_acc, test_f1=test_f1, test_mcc=test_mcc, test_recall=test_recall)
-        print(f"📄 Log file saved to: {log_path / log_file_name}")
+        
     elif args.model == 'graphwavenet':
         print("GraphWaveNet model selected. Running training and evaluation pipeline.")
         GWN = load_model('GraphWaveNet')
@@ -194,51 +184,58 @@ def main(args: argparse.Namespace) -> None:
         print("✅ Training finished.")
 
         print("\n" + "="*10 + " TESTING " + "="*10)
-        all_logits, all_labels = runner.test(test_loader, window_size, 5)
-        preds_cpu = torch.argmax(all_logits, dim=-1).detach().cpu()
-        labels_cpu = all_labels.detach().cpu()
-        test_acc = accuracy_score(labels_cpu, preds_cpu)
-        test_f1 = f1_score(labels_cpu, preds_cpu, average='macro')
-        test_mcc = matthews_corrcoef(labels_cpu, preds_cpu)
-        test_recall = recall_score(labels_cpu, preds_cpu, average='macro')
-
-        print(f"Test Accuracy: {test_acc:.4f}")
-        print(f"Test F1-Score: {test_f1:.4f}")
-        print(f"Test MCC: {test_mcc:.4f}")
-        print(f"Test Recall: {test_recall:.4f}")
-        output_model_path = MODELS_WEIGHTS_PATH / f"{args.model}_{market_name}_weights.pth"
-        torch.save(model_GWN.state_dict(), output_model_path)
-        print(f"💾 Model weights saved to: {output_model_path}")
-        log_file_name = f"{market_name}_run.log"
-        log_path = PROJECT_PATH / 'logs'
-        log_test_results(log_file_name, log_path, epochs=num_epochs, test_acc=test_acc, test_f1=test_f1, test_mcc=test_mcc, test_recall=test_recall)
-        print(f"📄 Log file saved to: {log_path / log_file_name}")
+        y_pred, y_true = runner.test(test_loader, window_size, 5)
+        process_test_results(y_pred, y_true)
     elif args.model == 'darnn':
         from model_runners.darnn_runner import DARNNRunner
         DARNN = load_model('DARNN')
         model_DARNN = DARNN(
-            100,
+            num_nodes-1,
             64,
             64,
-            100
+            T=window_size
         ).to(device)
         print(f"Model parameters: {sum([p.numel() for p in model_DARNN.parameters()]):,}")
         runner = DARNNRunner(model_DARNN, device)
         optimizer = optim.Adam(model_DARNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
         criterion = nn.BCEWithLogitsLoss()
         runner.train(train_loader, validation_loader, optimizer, criterion, train_param['epochs'], seq_length=window_size)
-        
+        y_pred, y_true = runner.test(test_loader, seq_length=window_size, num_features=5)
+        process_test_results(y_pred, y_true)    
+    elif args.model == 'hyperstockgraph':
+        from model_runners.hyperstockgraph_runner import HyperStockGraphRunner
+        NCModel = load_model('HyperStockGraph')
+        model_HSG = NCModel(
+            in_dim=5,  # <-- number of features
+            
+        ).to(device)
+        runner = HyperStockGraphRunner(model_HSG, device)
+        print(f"Model parameters: {sum([p.numel() for p in model_HSG.parameters()]):,}")
 
+        optimizer = optim.Adam(model_HSG.parameters(), lr=0.001)
+        criterion = nn.BCEWithLogitsLoss()
+        num_epochs = train_param['epochs']
 
+        runner.train(train_loader, validation_loader, optimizer, criterion, num_epochs, window_size, 5)
+        print("✅ Training finished.")
+
+        print("\n" + "="*10 + " TESTING " + "="*10)
+        y_pred, y_true = runner.test(test_loader, window_size, 5)
+        process_test_results(y_pred, y_true)
 if __name__ == '__main__':
     # Create the parser
     parser = argparse.ArgumentParser(description="Train and evaluate DGDNN model for a specific stock market.")
-    parser.add_argument('--model', type=str, required=True, choices=['dgdnn', 'graphwavenet', 'darnn'])
-    # Add the required --market argument
+    parser.add_argument('--model', 
+                        type=str, 
+                        required=True, 
+                        choices=['dgdnn', 'graphwavenet', 'darnn', 'hyperstockgraph'],
+                        help="The model to run.) #Choose from 'dgdnn', 'graphwavenet', 'darnn', or 'hyperstockgraph'.")
+        # Add the required --market argument
     parser.add_argument(
         '--market',
         type=str,
         required=True,
+        choices=['nasdaq', 'nyse', 'sse'],
         help="The stock market to process (e.g., 'nasdaq', 'nyse', 'sse'). This name is used to find the corresponding config and tickers file."
     )
 

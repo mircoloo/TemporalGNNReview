@@ -1,5 +1,12 @@
 from __future__ import division
 from __future__ import print_function
+from config import parser
+
+args = parser.parse_args()
+for arg in vars(args):
+    print(f"{arg}={getattr(args, arg)}")
+
+exit
 
 import datetime
 import json
@@ -9,7 +16,6 @@ import time
 
 import optimizers
 import torch
-from config import parser
 from models.base_models import NCModel, LPModel
 from utils.data_utils import load_data
 from utils.train_utils import get_dir_name, format_metrics
@@ -187,13 +193,13 @@ class ReRaLSTM:
         # Load data
 
         args.n_nodes = self.batch_size 
-        args.feat_dim = 5
+        args.feat_dim = 5 # number of features
         Model = NCModel  
-        args.n_classes = 1
-        model = Model(args)
+        args.n_classes = 1 # number of classes  
+        model = Model(args) 
         model = model.to(args.device)
         optimizer = getattr(optimizers, args.optimizer)(params=model.parameters(), lr=args.lr,
-                                                    weight_decay=args.weight_decay)
+                                                    weight_decay=args.weight_decay) # create the optimizer
         for p in model.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
@@ -206,16 +212,17 @@ class ReRaLSTM:
             optimizer,
             step_size=int(args.lr_reduce_freq),
             gamma=float(args.gamma)
-        )
+        ) # for learning rate scheduling
         tot_params = sum([np.prod(p.size()) for p in model.parameters()])
         logging.info(f"Total number of parameters: {tot_params}")
         
-        adj = np.load('graph.npy')
+        adj = np.load('graph.npy') # adjacency matrix
         adj = sp.coo_matrix(adj, dtype=np.float32)
         adj = normalize(adj+sp.eye(adj.shape[0]))
         adj = sparse_mx_to_torch_sparse_tensor(adj)
 
-        batch_offsets = np.arange(start=0, stop=self.valid_index, dtype=int)
+        
+        batch_offsets = np.arange(start=0, stop=self.valid_index, dtype=int) #the batch of training samples
         for i in range(self.epochs):
             t1 = time()
             np.random.shuffle(batch_offsets)
@@ -225,12 +232,12 @@ class ReRaLSTM:
             lr_scheduler.step()
             print(lr_scheduler.get_lr())
             model.train() 
-            for j in tqdm(range(self.valid_index - self.parameters['seq'] -self.steps +1)):
+            for j in tqdm(range(self.valid_index - self.parameters['seq'] -self.steps +1)): # remove from validation index the sequence length and the steps
                 emb_batch, mask_batch, price_batch, gt_batch = self.get_batch(
                     batch_offsets[j])
                 
                 optimizer.zero_grad()
-                embeddings = model.encode(torch.FloatTensor(emb_batch).to(device), adj.to(device))
+                embeddings = model.encode(torch.FloatTensor(emb_batch).to(device), adj.to(device)) # emb_batch [n_nodes, seq_len, feat_dim]
                 train_metrics = model.compute_metrics(embeddings,adj,torch.FloatTensor(price_batch).to(device), 
                                                                                         torch.FloatTensor(gt_batch).to(device), 
                                                                                         torch.FloatTensor(mask_batch).to(device), 
@@ -361,27 +368,87 @@ if __name__ == '__main__':
     if args.t is None:
         args.t = args.m + '_tickers_qualify_dr-0.98_min-5_smooth.csv'
     args.gpu = (args.gpu == 1)
-
+    """ 
+    args = Namespace(
+        p='../data/2013-01-01'
+        m='NASDAQ'
+        t=None
+        l=20
+        u=64
+        s=1
+        r=0.001
+        a=2
+        gpu=0
+        emb_file='NASDAQ_rank_lstm_seq-16_unit-64_2.csv.npy'
+        rel_name='sector_industry'
+        inner_prod=0
+        lr=0.0004
+        dropout=0.4
+        cuda=0
+        epochs=5000
+        weight_decay=0.0001
+        optimizer=Adam
+        momentum=0.999
+        patience=100
+        seed=1234
+        log_freq=5
+        eval_freq=1
+        save=0
+        save_dir=None
+        sweep_c=0
+        lr_reduce_freq=None
+        gamma=0.5
+        print_epoch=True
+        grad_clip=None
+        min_epochs=100
+        task=nc
+        model=HGCN
+        dim=16
+        manifold=PoincareBall
+        c=1.0
+        pretrained_embeddings=None
+        pos_weight=0
+        num_layers=2
+        bias=1
+        act=relu
+        n_heads=4
+        alpha=0.2
+        double_precision=0
+        use_att=1
+        dataset=pubmed
+        val_prop=0.05
+        test_prop=0.1
+        use_feats=1
+        normalize_feats=1
+        normalize_adj=1
+        split_seed=1234
+    ) 
+    """
+   
     args.inner_prod = (args.inner_prod == 1)
     lr_li = [8e-4, 5e-4, 1e-3 ,1e-4,]
     alpha_li = [10,9,8,7,6,5,4,3,2,1]
+
+
     for i in lr_li:
         for j in alpha_li:
             args.lr = i
             args.a = j
-            parameters = {'seq': int(args.l), 'unit': int(args.u), 'lr': float(args.r),
-                        'alpha': float(args.a)}
+            parameters = {'seq': int(args.l), # #l length of the sequence? 
+                          'unit': int(args.u), #u units 
+                          'lr': float(args.r), #r ??
+                        'alpha': float(args.a)} #a ?? alpha ??
             print('arguments:', args)
             print('parameters:', parameters)
 
             RR_LSTM = ReRaLSTM(
-                data_path=args.p,
-                market_name=args.m,
-                tickers_fname=args.t,
-                relation_name=args.rel_name,
-                emb_fname=args.emb_file,
-                parameters=parameters,
-                steps=1, epochs=1, batch_size=None, gpu=args.gpu,
+                data_path=args.p,  # path to data
+                market_name=args.m, # market name
+                tickers_fname=args.t, # tickers file name
+                relation_name=args.rel_name, # relation name
+                emb_fname=args.emb_file, # embedding file name
+                parameters=parameters, # parameters for the model
+                steps=1, epochs=1, batch_size=None, gpu=args.gpu, 
                 in_pro=args.inner_prod
             )
 

@@ -1,3 +1,4 @@
+from sklearn.metrics import accuracy_score, precision_score, recall_score, matthews_corrcoef, f1_score
 import torch
 import os
 import sys
@@ -7,6 +8,7 @@ import models.DGDNN.Model.ggd
 import models.DGDNN.Model.catattn
 from models.GraphWaveNet.model import gwnet
 from models.DARNN.DARNN import DARNN
+#from models.HyperStockGAT.training.models.base_models import NCModel
 from pathlib import Path
 from datetime import datetime
 import pandas as pd 
@@ -38,6 +40,8 @@ def load_model(model_name: str):
             return gwnet
         case "DARNN":
             return DARNN
+        case "HyperStockGraph":
+            return NCModel
         case _:  # default case for any other model name
             raise ValueError(f"Unknown model name: {model_name}")
         
@@ -53,6 +57,33 @@ def log_test_results(filename: Path | str, path_to_log: str | Path, **kwargs):
             f.write(f"{key}={value}\n")
     f.write("=======================\n")
 
+def process_test_results(y_hat, y_true):
+    """
+    Print and return evaluation metrics for test results (binary classification).
+    """
+    # Convert raw outputs to binary predictions
+    y_pred = [1 if o > 0 else 0 for o in y_hat]
+    y_true = [1 if t > 0 else 0 for t in y_true]
+
+    acc = accuracy_score(y_true, y_pred)
+    precision = precision_score(y_true, y_pred, zero_division=0)
+    recall = recall_score(y_true, y_pred, zero_division=0)
+    f1 = f1_score(y_true, y_pred, zero_division=0)
+    mcc = matthews_corrcoef(y_true, y_pred)
+
+    print(f"Test Accuracy: {acc:.4f}")
+    print(f"Test Precision: {precision:.4f}")
+    print(f"Test Recall: {recall:.4f}")
+    print(f"Test F1 Score: {f1:.4f}")
+    print(f"Test MCC: {mcc:.4f}")
+
+    return {
+        "accuracy": acc,
+        "precision": precision,
+        "recall": recall,
+        "f1_score": f1,
+        "mcc": mcc
+    }
 
 
 

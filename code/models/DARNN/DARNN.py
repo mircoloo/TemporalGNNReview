@@ -35,6 +35,7 @@ class InputAttentionEncoder(nn.Module):
         self.v_e = nn.Linear(self.T, 1, bias=False)
     
     def forward(self, inputs):
+        #inputs: [batch_size, T, N]
         encoded_inputs = torch.zeros((inputs.size(0), self.T, self.M)).cuda()
         
         #initiale hidden states
@@ -52,8 +53,9 @@ class InputAttentionEncoder(nn.Module):
             e_k_t = torch.squeeze(self.v_e(z))
         
             #normalize attention weights (equation 9)
+            if e_k_t.dim() == 1:
+                e_k_t = e_k_t.unsqueeze(0)
             alpha_k_t = F.softmax(e_k_t, dim=1)
-            
             #weight inputs (equation 10)
             weighted_inputs = alpha_k_t * inputs[:, t, :] 
     
@@ -104,7 +106,6 @@ class TemporalAttentionDecoder(nn.Module):
         for t in range(self.T):
             #concatenate hidden states
             d_s_prime_concat = torch.cat((d_tm1, s_prime_tm1), dim=1)
-            #print(d_s_prime_concat)
             #temporal attention weights (equation 12)
             x1 = self.W_d(d_s_prime_concat).unsqueeze_(1).repeat(1, encoded_inputs.shape[1], 1)
             y1 = self.U_d(encoded_inputs)
