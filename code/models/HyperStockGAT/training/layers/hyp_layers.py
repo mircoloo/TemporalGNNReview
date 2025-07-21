@@ -14,14 +14,14 @@ def get_dim_act_curv(args):
     """
     Helper function to get dimension and activation at every layer.
     :param args:
-    :return:
+    :return: goes here
     """
     if not args.act:
         act = lambda x: x
     else:
         act = getattr(F, args.act)
     acts = [act] * (args.num_layers - 1)
-    dims = [args.feat_dim] + ([args.dim] * (args.num_layers - 1))
+    dims = [args.num_feat] + ([args.dim] * (args.num_layers - 1))
     if args.task in ['lp', 'rec']:
         dims += [args.dim]
         acts += [act]

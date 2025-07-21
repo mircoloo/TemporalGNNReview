@@ -30,7 +30,7 @@ class BaseModel(nn.Module):
         self.manifold = getattr(manifolds, self.manifold_name)()
         if self.manifold.name == 'Hyperboloid':
             args.feat_dim = args.feat_dim + 1
-        self.nnodes = args.n_nodes
+        self.nnodes = args.num_nodes
         self.encoder = getattr(encoders, args.model)(self.c, args)
 
     def encode(self, x, adj):
