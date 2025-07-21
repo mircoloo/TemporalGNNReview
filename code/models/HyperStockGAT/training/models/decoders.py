@@ -64,10 +64,7 @@ class LinearDecoder(Decoder):
         self.decode_adj = False
         self.time_conv = nn.Conv2d(int(args.l), 1, kernel_size=(1, 3), stride=(1,  1), padding=(0, 1))
 
-        print("3 -- Entered LinearDecoder with input_dim: {}, output_dim: {}, bias: {}, c: {}".format(
-            self.input_dim, self.output_dim, self.bias, self.c))
     def decode(self, x, adj):
-        print(f"4 -- decode x shape: {x.shape}, adj shape: {adj.shape} {x.isnan().any()}")
 
         # --- Inspection before hyperbolic ops ---
         print("\n--- Before Hyperbolic Ops (x) ---")

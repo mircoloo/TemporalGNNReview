@@ -21,28 +21,28 @@ torch.autograd.set_detect_anomaly(True)
 args = argparse.Namespace()
 
 # 1. Prepare args (you need to define this or use argparse)
-args = Namespace(
-    manifold='Hyperboloid', 
-    c=1.0,
-    cuda=0, 
-    device='cuda',
-    feat_dim=5, 
-    n_nodes=1026, 
-    model='HGCN',  # must exist in models/encoders.py
-    n_classes=1,
-    pos_weight=False,
-    l=8,
-    num_layers=2,
-    a=2,
-    task='nc',
-    dataset='pubmed',
-    act='relu',
-    dim=16,
-    dropout=0.4,
-    bias=True,
-    weight_decay=0.0001,    
-    use_att=True,
-)
+# args = Namespace(
+#     manifold='Hyperboloid', 
+#     c=1.0,
+#     cuda=0, 
+#     device='cuda',
+#     feat_dim=5, 
+#     n_nodes=1026, 
+#     model='HGCN',  # must exist in models/encoders.py
+#     n_classes=1,
+#     pos_weight=False,
+#     l=8,
+#     num_layers=2,
+#     a=2,
+#     task='nc',
+#     dataset='pubmed',
+#     act='relu',
+#     dim=16,
+#     dropout=0.4,
+#     bias=True,
+#     weight_decay=0.0001,    
+#     use_att=True,
+# )
 
 args = Namespace(
         p='../data/2013-01-01',
@@ -51,7 +51,7 @@ args = Namespace(
         l=20,
         u=256,
         s=10,
-        r=0.001,
+        r=1e-3,
         a=10,
         gpu=0,
         emb_file='NASDAQ_rank_lstm_seq-16_unit-64_2.csv.npy',
@@ -59,6 +59,10 @@ args = Namespace(
         inner_prod=0,
         lr=0.001,
         dropout=0.2,
+        model='HGCN',
+        dim=256,
+        manifold='PoincareBall',
+        c=1.0,
         cuda=0,
         epochs=5000,
         weight_decay=0.0001,
@@ -77,10 +81,6 @@ args = Namespace(
         grad_clip=True,
         min_epochs=100,
         task='nc',
-        model='HGCN',
-        dim=5,
-        manifold='PoincareBall',
-        c=1.0,
         pretrained_embeddings=None,
         pos_weight=0,
         num_layers=10,
@@ -99,13 +99,15 @@ args = Namespace(
         split_seed=1234,
     ) 
 
-p = '/home/mbisoffi/tests/TemporalGNNReview/code/data/datasets/graph/SSE_Test_2018-01-01_2019-12-31_14/graph_0.pt'
+import random
+i = random.randint(0, 20)
+p = f'/home/mbisoffi/tests/TemporalGNNReview/code/data/datasets/graph/SSE_Test_2018-01-01_2019-12-31_14/graph_{i}.pt'
 data = torch.load(p, weights_only=False)
 num_nodes = data.x.shape[0]  # Number of nodes
 
 
-args.feat_dim = 5  # Assuming each node has 5 features
-args.n_nodes = num_nodes  # Number of nodes in the graph
+args.num_feat = 5  # Assuming each node has 5 features
+args.num_nodes = num_nodes  # Number of nodes in the graph
 args.l = int(data.x.shape[1] / 5)  # Length of the time series sequence for each node
 args.n_classes = 1  # Assuming a binary classification task
 # Training & Device Configuration
@@ -114,17 +116,12 @@ args.cuda = 0 if args.device == 'cuda' else -1
 
 
 x = data['x'].to(args.device)  # Node features
-x = x.reshape((args.n_nodes, args.feat_dim, args.l)).permute(0,2,1)  # Reshape to (n_nodes, l, feat_dim)
+x = x.reshape((args.num_nodes, args.num_feat, args.l)).permute(0,2,1)  # Reshape to (n_nodes, l, feat_dim)
 num_edges = data['edge_index'].shape[1]  # Number of edges
 adj = to_dense_adj(edge_index=data.edge_index, edge_attr=data.edge_attr).squeeze().to(args.device)  # Adjacency matrix
 
 
 print(x.shape, adj.shape)
-
-
-
-
-
 
 print(f"Using device: {args.device}")
 
@@ -153,8 +150,8 @@ for submodule in model.modules():
 # For this example, we'll create random dummy data with the correct shapes.
 
 # Graph data
-features = torch.rand(args.n_nodes, args.l, args.feat_dim).to(args.device) # Node features
-adj = torch.rand(args.n_nodes, args.n_nodes).to(args.device)       # Adjacency matrix
+features = torch.rand(args.num_nodes, args.l, args.num_feat).to(args.device) # Node features
+adj = torch.rand(args.num_nodes, args.num_nodes).to(args.device)       # Adjacency matrix
 
 # Financial data for the loss calculation
 # base_price = torch.rand(args.n_nodes, 1).to(args.device)   # Base prices for each stock
@@ -236,7 +233,7 @@ for epochs in range(1000):
     print(f"  Micro Metrics: Precision={micro_precision:.4f}, Recall={micro_recall:.4f}, F1={micro_f1:.4f}")
     print(f"  Macro Metrics: Precision={macro_precision:.4f}, Recall={macro_recall:.4f}, F1={macro_f1:.4f}")
 
-    print(f"{pred.squeeze()=} {targets_cpu.squeeze()=}")
+    #print(f"{pred.squeeze()=} {targets_cpu.squeeze()=}")
 
 # metrics = model.compute_metrics(
 #     embeddings=embeddings, 
