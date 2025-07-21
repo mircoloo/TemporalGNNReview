@@ -47,7 +47,7 @@ class DARNNRunner(BaseModelRunner):
                 drivers = drivers.unsqueeze(0).permute(0,2,1).to(self.device)
                 targets = targets.reshape(1,-1,1).to(self.device)
                 outputs = self.model(drivers, targets)
-                y = y.reshape(1,1)
+                
                 loss = criterion(outputs, y)
                 loss.backward()
                 optimizer.step()

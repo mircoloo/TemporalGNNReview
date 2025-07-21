@@ -9,7 +9,7 @@ import manifolds
 from layers.att_layers import GraphAttentionLayer
 import layers.hyp_layers as hyp_layers
 from layers.layers import GraphConvolution, Linear, get_dim_act
-import utils.math_utils as pmath
+import utilities.math_utils as pmath
 
 
 class Encoder(nn.Module):
@@ -131,20 +131,12 @@ class Temporal_Attention_layer(nn.Module):
         '''
         _, num_of_vertices, num_of_features, num_of_timesteps = x.shape
         # print(self.U1)
-        print(" -- num of vertices", num_of_vertices, "num_of_features", num_of_features, "num_of_timesteps", num_of_timesteps)
-        print(" -- U1 shape", self.U1.shape, "U2 shape", self.U2.shape, "U3 shape", self.U3.shape, "be shape", self.be.shape, "Ve shape", self.Ve.shape)
         
 
-        print(f"Temporal attention network x nan? {x.isnan().any()}")
         lhs = x.permute(0, 3, 2, 1) @ self.U1 @  self.U2
 
-        print(f"Temmporal attention layer nan? {lhs.isnan().any()}")
         if lhs.isnan().any():
-            print(x.permute(0, 3, 2, 1).isnan().any(), self.U1.isnan().any(), self.U2.isnan().any())
             x_permuted = x.permute(0, 3, 2, 1)
-            print(f"x_permuted - min: {x_permuted.min().item():.6e}, max: {x_permuted.max().item():.6e}")
-            print(f"U1 - min: {self.U1.min().item():.6e}, max: {self.U1.max().item():.6e}")
-            print(f"U2 - min: {self.U2.min().item():.6e}, max: {self.U2.max().item():.6e}")
         # x:(B, N, F_in, T) -> (B, T, F_in, N)
         # (B, T, F_in, N)(N) -> (B,T,F_in)
         # (B,T,F_in)(F_in,N)->(B,T,N)

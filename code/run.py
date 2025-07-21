@@ -7,6 +7,13 @@ import os
 PROJECT_PATH = Path(__file__).parent.resolve()
 sys.path.append(str(PROJECT_PATH))
 sys.path.append(str(PROJECT_PATH / "models" / "DGDNN" / "Model"))
+sys.path.append(str(PROJECT_PATH / "models" / "HyperStockGAT" / "training"))
+sys.path.append(str(PROJECT_PATH / "models" / "HyperStockGAT" / "training" / "layers"))
+sys.path.append(str(PROJECT_PATH / "models" / "HyperStockGAT" / "training" / "utilities"))
+sys.path.append(str(PROJECT_PATH / "models" / "HyperStockGAT" / "training" / "models"))
+sys.path.append(str(PROJECT_PATH / "models" / "HyperStockGAT"))
+
+
 
 from model_runners.dgdnn_runner import DGDNNRunner
 from model_runners.graphwavenet_runner import GraphWaveNetRunner
@@ -205,23 +212,89 @@ def main(args: argparse.Namespace) -> None:
     elif args.model == 'hyperstockgraph':
         from model_runners.hyperstockgraph_runner import HyperStockGraphRunner
         NCModel = load_model('HyperStockGraph')
-        model_HSG = NCModel(
-            in_dim=5,  # <-- number of features
-            
-        ).to(device)
+        
+        args = argparse.Namespace(
+            p='../data/2013-01-01',
+            m='NASDAQ',
+            t=None,
+            l=window_size,
+            u=256,
+            s=10,
+            r=1e-3,
+            a=10,
+            gpu=0,
+            emb_file='NASDAQ_rank_lstm_seq-16_unit-64_2.csv.npy',
+            rel_name='sector_industry',
+            inner_prod=0,
+            lr=0.001,
+            dropout=0.2,
+            model='HGCN',
+            dim=256,
+            manifold='PoincareBall',
+            c=1.0,
+            cuda=0,
+            epochs=5000,
+            weight_decay=0.0001,
+            optimizer='Adam',
+            momentum=0.999,
+            patience=100,
+            seed=None,
+            log_freq=5,
+            eval_freq=1,
+            save=0,
+            save_dir=None,
+            sweep_c=0,
+            lr_reduce_freq=None,
+            gamma=0.5,
+            print_epoch=True,
+            grad_clip=True,
+            min_epochs=100,
+            task='nc',
+            pretrained_embeddings=None,
+            pos_weight=0,
+            num_layers=10,
+            bias=1,
+            act='relu',
+            n_heads=2,
+            alpha=0.2,
+            double_precision=0,
+            use_att=0,
+            dataset='pubmed',
+            val_prop=0.05,
+            test_prop=0.1,
+            use_feats=1,
+            normalize_feats=1,
+            normalize_adj=1,
+            split_seed=1234,
+            device = device,
+            num_feat = 5,  # Assuming each node has 5 features
+            num_nodes = num_nodes,  # Number of nodes in the graph
+            n_classes = 1
+        )
+   
+
+        model_HSG = NCModel(args).to(device)
+
         runner = HyperStockGraphRunner(model_HSG, device)
         print(f"Model parameters: {sum([p.numel() for p in model_HSG.parameters()]):,}")
+        print("Model created successfully:")
 
         optimizer = optim.Adam(model_HSG.parameters(), lr=0.001)
         criterion = nn.BCEWithLogitsLoss()
         num_epochs = train_param['epochs']
 
+        train_loader
+        validation_loader
+        test_loader
         runner.train(train_loader, validation_loader, optimizer, criterion, num_epochs, window_size, 5)
         print("✅ Training finished.")
 
         print("\n" + "="*10 + " TESTING " + "="*10)
         y_pred, y_true = runner.test(test_loader, window_size, 5)
         process_test_results(y_pred, y_true)
+
+
+
 if __name__ == '__main__':
     # Create the parser
     parser = argparse.ArgumentParser(description="Train and evaluate DGDNN model for a specific stock market.")

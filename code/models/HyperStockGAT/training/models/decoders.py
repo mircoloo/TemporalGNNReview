@@ -67,15 +67,11 @@ class LinearDecoder(Decoder):
     def decode(self, x, adj):
 
         # --- Inspection before hyperbolic ops ---
-        print("\n--- Before Hyperbolic Ops (x) ---")
-        print(f"Input 'x' min: {x.min().item():.6e}, max: {x.max().item():.6e}")
-        print(f"Input 'x' mean: {x.mean().item():.6e}, std: {x.std().item():.6e}")
         if torch.isnan(x).any():
             print("ALERT: NaNs found in input 'x' to decode!")
         if torch.isinf(x).any():
             print("ALERT: Infs found in input 'x' to decode!")
 
-        print(self.manifold)
         logmap = self.manifold.logmap0(x, c=self.c)
        
         if torch.isnan(logmap).any():
@@ -85,10 +81,6 @@ class LinearDecoder(Decoder):
         h = self.manifold.proj_tan0(logmap, c=self.c)
 
         # --- Inspection after hyperbolic ops (this 'h' is input to time_conv) ---
-        print("\n--- After Hyperbolic Ops (h, input to time_conv) ---")
-        print(f"Input 'h' to time_conv - shape: {h.shape}")
-        print(f"Input 'h' to time_conv - min: {h.min().item():.6e}, max: {h.max().item():.6e}")
-        print(f"Input 'h' to time_conv - mean: {h.mean().item():.6e}, std: {h.std().item():.6e}")
         if torch.isnan(h).any():
             print("!!! ALERT: NaNs found in 'h' AFTER hyperbolic ops (BEFORE time_conv) !!!")
         if torch.isinf(h).any():
@@ -97,15 +89,11 @@ class LinearDecoder(Decoder):
         # ... rest of your code from here
         h = self.time_conv(h) # This is the problematic line
 
-        print(f"Output of time_conv (output_time_conv) - shape: {h.shape}")
-        print(f"Output of time_conv (output_time_conv) - min: {h.min().item()}, max: {h.max().item()}")
-        print(f"Output of time_conv (output_time_conv) - mean: {h.mean().item()}, std: {h.std().item()}")
         if torch.isnan(h).any():
             print("ALERT: NaNs found in output of time_conv!")
         if torch.isinf(h).any():
             print("ALERT: Infs found in output of time_conv!")
         h = h.squeeze(0).squeeze(0)
-        print("is nan in h", h.isnan().any(), h.shape)
         return F.leaky_relu(super(LinearDecoder, self).decode(h, adj))
 
     def extra_repr(self):

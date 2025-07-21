@@ -3,7 +3,8 @@
 import torch
 
 from manifolds.base import Manifold
-from utils.math_utils import artanh, tanh
+#from models.HyperStockGAT.training.utilities.math_utils import arcosh, cosh, sinh, artanh, tanh
+from utilities.math_utils import arcosh, cosh, sinh, artanh, tanh
 
 
 class PoincareBall(Manifold):

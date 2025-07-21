@@ -5,12 +5,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 from layers.layers import FermiDiracDecoder
 import layers.hyp_layers as hyp_layers
 import manifolds
-import models.encoders as encoders
-from models.decoders import model2decoder
-from utils.eval_utils import acc_f1
+from . import encoders
+from .decoders import model2decoder
+from utilities.eval_utils import acc_f1
 device = 'cuda'
 
 class BaseModel(nn.Module):
@@ -21,6 +22,8 @@ class BaseModel(nn.Module):
     def __init__(self, args):
         super(BaseModel, self).__init__()
         self.manifold_name = args.manifold
+        if args.device is not None:
+            self.device = args.device
         if args.c is not None:
             self.c = torch.tensor([args.c])
             if not args.cuda == -1:
@@ -34,14 +37,10 @@ class BaseModel(nn.Module):
         self.encoder = getattr(encoders, args.model)(self.c, args)
 
     def encode(self, x, adj):
-        print("PRE x shape in encode", x.shape, "adj shape",adj.shape)
         if self.manifold.name == 'Hyperboloid':
             o = torch.zeros_like(x)
             x = torch.cat([o[:, 0:1], x], dim=1)
-        print(" === POST x shape in encode", x.shape, "adj shape",adj.shape)
-        print(f" === feeding in HGCN encoder with x shape {x.shape} and adj shape {adj.shape}")
         h = self.encoder.encode(x, adj)
-        print(" === POST encoder.encode (HGCN) x,adj in h shape in encode", x.shape, "adj shape",adj.shape)
         return h
 
     def compute_metrics(self, embeddings, data, split):
@@ -87,6 +86,7 @@ class NCModel(BaseModel):
         super(NCModel, self).__init__(args)
         print("The decoder is ", model2decoder[args.model])
         self.decoder = model2decoder[args.model](self.c, args)
+
         if args.n_classes > 2:
             self.f1_average = 'micro'
         else:
@@ -99,20 +99,15 @@ class NCModel(BaseModel):
             self.weights = self.weights.to(args.device)
 
     def decode(self, h, adj):
-        print(f"3 -- decode h shape: {h.shape}, adj shape: {adj.shape}")
         output = self.decoder.decode(h, adj)
         return F.leaky_relu(output, 0.2)
 
     def compute_metrics(self, embeddings,adj,base_price, ground_truth, mask, alpha, no_stocks):
-        print("Computing metrics in NCModel")
         
-        print(f" 3 -- embeddings shape: {embeddings.shape}, adj shape: {adj.shape}, base_price shape: {base_price.shape}, ground_truth shape: {ground_truth.shape}, mask shape: {mask.shape}, alpha: {alpha}, no_stocks: {no_stocks}")
         output = self.decode(embeddings, adj)
-        print(output, "output shape in NCModel compute_metrics")
         loss, reg_loss, rank_loss, return_ratio = trr_loss_mse_rank(output.reshape((no_stocks,1)),base_price, ground_truth, mask, alpha, no_stocks)
         # acc, f1 = acc_f1(output, data['labels'][idx], average=self.f1_average)
         metrics = {'loss': loss, 'reg_loss': reg_loss, 'rank_loss': rank_loss, 'rr':return_ratio}
-        print(f"Metrics computed in NCModel {metrics=}")
         return metrics
 
     def init_metric_dict(self):
