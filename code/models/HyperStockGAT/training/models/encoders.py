@@ -9,7 +9,10 @@ import manifolds
 from layers.att_layers import GraphAttentionLayer
 import layers.hyp_layers as hyp_layers
 from layers.layers import GraphConvolution, Linear, get_dim_act
-import utils.math_utils as pmath
+import torch.nn.init as init
+#import utilities.math_utils as pmath
+#from models.HyperStockGAT.training.utilities.math_utils import pmath
+
 
 
 class Encoder(nn.Module):
@@ -93,11 +96,20 @@ class GCN(Encoder):
 class Temporal_Attention_layer(nn.Module):
     def __init__(self, in_channels, num_of_vertices, num_of_timesteps):
         super(Temporal_Attention_layer, self).__init__()
-        self.U1 = nn.Parameter(torch.FloatTensor(num_of_vertices))
-        self.U2 = nn.Parameter(torch.FloatTensor(in_channels, num_of_vertices))
-        self.U3 = nn.Parameter(torch.FloatTensor(in_channels))
-        self.be = nn.Parameter(torch.FloatTensor(1, num_of_timesteps, num_of_timesteps))
-        self.Ve = nn.Parameter(torch.FloatTensor(num_of_timesteps, num_of_timesteps))
+        self.U1 = nn.Parameter(torch.empty(num_of_vertices))
+        init.uniform_(self.U1, a=-0.1, b=0.1)  # initialize U1 in [-0.1, 0.1]
+
+        self.U2 = nn.Parameter(torch.empty(in_channels, num_of_vertices))
+        init.xavier_uniform_(self.U2)  # Xavier uniform initialization for 2D weight matrix
+
+        self.U3 = nn.Parameter(torch.empty(in_channels))
+        init.uniform_(self.U3, a=-0.1, b=0.1)
+
+        self.be = nn.Parameter(torch.empty(1, num_of_timesteps, num_of_timesteps))
+        init.uniform_(self.be, a=-0.1, b=0.1)
+
+        self.Ve = nn.Parameter(torch.empty(num_of_timesteps, num_of_timesteps))
+        init.xavier_uniform_(self.Ve)
 
     def forward(self, x):
         '''

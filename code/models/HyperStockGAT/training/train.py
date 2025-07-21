@@ -17,8 +17,8 @@ import time
 import optimizers
 import torch
 from models.base_models import NCModel, LPModel
-from utils.data_utils import load_data
-from utils.train_utils import get_dir_name, format_metrics
+from utilities.data_utils import load_data
+from utilities.train_utils import get_dir_name, format_metrics
 import scipy.sparse as sp
 
 

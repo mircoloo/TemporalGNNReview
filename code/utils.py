@@ -11,7 +11,9 @@ from models.DARNN.DARNN import DARNN
 #from models.HyperStockGAT.training.models.base_models import NCModel
 from pathlib import Path
 from datetime import datetime
-import pandas as pd 
+import pandas as pd
+
+from models.HyperStockGAT.training.models.base_models import NCModel 
 
 # Define optimizer and objective function
 def theta_regularizer(theta):
