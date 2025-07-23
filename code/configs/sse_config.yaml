@@ -5,11 +5,11 @@
 # Parameters related to data loading and time periods
 dataset_params:
   market: 'SSE'
-  #train_sedate: ['2016-05-01', '2017-06-30'] ORIGINAL FROM PAPER
-  train_sedate: ['2010-05-01', '2017-06-30']  # Original from paper
-  #val_sedate: ['2017-07-01', '2017-12-31']
-  val_sedate: ['2017-07-01', '2018-07-01']
-  test_sedate: ['2018-01-01', '2020-01-01']
+  train_sedate: ['2016-05-01', '2017-06-30'] #ORIGINAL FROM PAPER
+  #train_sedate: ['2010-05-01', '2017-06-30']  
+  val_sedate: ['2017-07-01', '2017-12-31']
+  #val_sedate: ['2017-07-01', '2018-07-01']
+  test_sedate: ['2018-01-01', '2019-12-31']
   #test_sedate: ['2018-07-02', '2022-12-31']
   window_size: 14  # From paper: τ = 19
   use_fast_approximation: false

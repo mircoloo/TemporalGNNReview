@@ -18,7 +18,7 @@ class DGDNNRunner(BaseModelRunner):
                 C = train_sample.y.unsqueeze(dim=1).float()
                 outputs = self.model(train_sample.x, A)
                 loss = criterion(outputs, C) \
-                       - alpha * neighbor_distance_regularizer(self.model.theta) \
+                       + alpha * neighbor_distance_regularizer(self.model.theta) \
                        + theta_regularizer(self.model.theta)
                 loss.backward()
                 optimizer.step()
@@ -27,26 +27,26 @@ class DGDNNRunner(BaseModelRunner):
                 val_loss, val_acc, val_f1, val_mcc = 0.0, 0.0, 0.0, 0.0
                 self.model.eval()
                 n_val = 0
-                from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef
                 with torch.no_grad():
                     for val_sample in val_loader:
                         if val_sample.x.shape[-1] != 5 * window_size: continue
                         val_sample = val_sample.to(self.device)
                         A = to_dense_adj(val_sample.edge_index, batch=val_sample.batch, edge_attr=val_sample.edge_attr, max_num_nodes=num_nodes).squeeze(0)
-                        out = self.model(val_sample.x, A)
+                        logits = self.model(val_sample.x, A)
                         y_true = val_sample.y.detach().cpu()
-                        y_pred = (out > 0).float().detach().cpu().squeeze()
-                        val_loss += criterion(out, val_sample.y.unsqueeze(1).float()).item()
+                        y_pred = (torch.sigmoid(logits) > 0.5).int().detach().cpu().squeeze()
+                        val_loss += criterion(logits, val_sample.y.unsqueeze(1).float()).item()
                         val_acc += accuracy_score(y_true, y_pred)
                         val_f1 += f1_score(y_true, y_pred, zero_division=0)
                         val_mcc += matthews_corrcoef(y_true, y_pred)
                         n_val += 1
+                        #print(f"{y_pred=}")
                 if n_val > 0:
                     avg_val_loss = val_loss / n_val
                     avg_val_acc = val_acc / n_val
                     avg_val_f1 = val_f1 / n_val
                     avg_val_mcc = val_mcc / n_val
-                    print(f"Epoch {epoch}: Val Loss: {avg_val_loss:.4f}, Val Acc: {avg_val_acc:.4f}, Val F1: {avg_val_f1:.4f}, Val MCC: {avg_val_mcc:.4f}")
+                    print(f"Epoch {epoch}: Val Loss: {avg_val_loss:.4f}, Val Acc: {avg_val_acc:.4f}, Val F1: {avg_val_f1:.4f},  Val MCC: {avg_val_mcc:.4f}")
                 self.model.train()
 
     def test(self, test_loader, window_size, num_nodes):
@@ -58,11 +58,14 @@ class DGDNNRunner(BaseModelRunner):
                 if test_sample.x.shape[-1] != 5 * window_size: continue
                 test_sample = test_sample.to(self.device)
                 A = to_dense_adj(test_sample.edge_index, batch=test_sample.batch, edge_attr=test_sample.edge_attr, max_num_nodes=num_nodes).squeeze(0)
-                out = self.model(test_sample.x, A)
-                y_pred = torch.cat((all_logits, out.squeeze()), dim=0)
-                y_yrue = torch.cat((all_labels, test_sample.y), dim=0)
+                logits = self.model(test_sample.x, A)
+                all_logits = torch.cat((all_logits, logits.squeeze()), dim=0)
+                all_labels = torch.cat((all_labels, test_sample.y), dim=0) 
 
+        y_pred = [1 if torch.sigmoid(logit).item() > 0.5 else 0 for logit in all_logits] # Assuming all_logits now holds the accumulated logits
+        # Also, ensure all_labels is used for y_true for the final return
+        y_true = all_labels.detach().cpu().tolist() # Convert accumulated labels to list for sklearn metrics
 
-        return y_pred, y_yrue
+        return y_pred, y_true
  
         

@@ -12,6 +12,8 @@ sys.path.append(str(PROJECT_PATH / "models" / "HyperStockGAT" / "training" / "la
 sys.path.append(str(PROJECT_PATH / "models" / "HyperStockGAT" / "training" / "utilities"))
 sys.path.append(str(PROJECT_PATH / "models" / "HyperStockGAT" / "training" / "models"))
 sys.path.append(str(PROJECT_PATH / "models" / "HyperStockGAT"))
+sys.path.append(str(PROJECT_PATH / "model_runners"))
+
 
 
 
@@ -110,6 +112,7 @@ def main(args: argparse.Namespace) -> None:
     print("-" * 5, "Building test dataset...", "-" * 5)
     test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, test_sedate[0], test_sedate[1], window_size, 'Test', use_fast_approximation)
     
+
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
     validation_loader = DataLoader(validation_dataset, batch_size=1, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
@@ -286,11 +289,11 @@ def main(args: argparse.Namespace) -> None:
         train_loader
         validation_loader
         test_loader
-        runner.train(train_loader, validation_loader, optimizer, criterion, num_epochs, window_size, 5)
+        runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, window_size, 5)
         print("✅ Training finished.")
 
         print("\n" + "="*10 + " TESTING " + "="*10)
-        y_pred, y_true = runner.test(test_loader, window_size, 5)
+        y_pred, y_true = runner.test(test_dataset, window_size, 5)
         process_test_results(y_pred, y_true)
 
 

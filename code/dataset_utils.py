@@ -4,6 +4,7 @@ from typing import List
 
 import pandas as pd
 from tqdm import tqdm
+from torch_geometric.data import Dataset
 
 
 def retrieve_company_list(tickers_csv_path: Path) -> List[str]:
@@ -102,3 +103,5 @@ def filter_stocks_from_timeperiod(
             
     print(f"\nFiltering complete. {len(filtered_list)} out of {len(company_list)} stocks have sufficient data for the period.")
     return filtered_list
+
+

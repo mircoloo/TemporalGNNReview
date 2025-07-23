@@ -65,7 +65,6 @@ class LinearDecoder(Decoder):
         self.time_conv = nn.Conv2d(int(args.l), 1, kernel_size=(1, 3), stride=(1,  1), padding=(0, 1))
 
     def decode(self, x, adj):
-
         # --- Inspection before hyperbolic ops ---
         if torch.isnan(x).any():
             print("ALERT: NaNs found in input 'x' to decode!")
