@@ -15,10 +15,9 @@ class GeneralizedGraphDiffusion(nn.Module):
         x: Tensor,            # [N, F_in]
         a: Tensor             # [N, N]
     ) -> Tensor:              # [N, F_out]
-
+        
         q = torch.einsum('s,sij->ij', theta, T_slices)  # [N, N]
         q = q * a                                       # [N, N]
-
         q = q.to_sparse()
         out = torch.sparse.mm(q, x)                    # [N, F_in]
 

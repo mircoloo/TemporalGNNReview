@@ -2,10 +2,17 @@ from sklearn.metrics import f1_score, matthews_corrcoef, accuracy_score, mean_ab
 from .base_runner import BaseModelRunner
 import torch
 from torch_geometric.utils import to_dense_adj
+from torch_geometric.loader import DataLoader
+from runner_utils import BaseGraphDataset
+
+
+
 
 class DGDNNRunner(BaseModelRunner):
-    def train(self, train_loader, val_loader, optimizer, criterion, num_epochs, alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes, use_validation=True):
+    def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes, use_validation=True):
         self.model.train()
+        train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
         for epoch in range(num_epochs + 1):
             train_loss = 0.0
             for train_sample in train_loader:
@@ -49,7 +56,8 @@ class DGDNNRunner(BaseModelRunner):
                     print(f"Epoch {epoch}: Val Loss: {avg_val_loss:.4f}, Val Acc: {avg_val_acc:.4f}, Val F1: {avg_val_f1:.4f},  Val MCC: {avg_val_mcc:.4f}")
                 self.model.train()
 
-    def test(self, test_loader, window_size, num_nodes):
+    def test(self, test_dataset, window_size, num_nodes):
+        test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
         self.model.eval()
         all_logits = torch.tensor([]).to(self.device)
         all_labels = torch.tensor([]).to(self.device)

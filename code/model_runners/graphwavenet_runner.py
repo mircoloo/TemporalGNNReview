@@ -1,7 +1,30 @@
-from .base_runner import BaseModelRunner
+from model_runners.runner_utils import BaseGraphDataset
+from model_runners.base_runner import BaseModelRunner
 import torch
+from torch_geometric.loader import DataLoader
 from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, recall_score
 from torch_geometric.utils import to_dense_adj
+
+
+class GraphWaveNetDataset(BaseGraphDataset):
+    def __init__(self, dataset):
+        # Data(x=[1171, 110], edge_index=[2, 1369852], edge_attr=[1369852], y=[1171])
+        super().__init__(dataset)
+    def __getitem__(self, idx):
+        data_sample = self.dataset[idx]
+        data_sample = self.dataset[idx] 
+        x = data_sample.x 
+        res = super().is_input_correct_shaped(x) # check if the input is correct shape, since some samples are wrong
+        if not res:
+            print(data_sample)
+            x = super().adjust_input_shape(x) # in case reshape the tensor appending the last timestamp features
+        x = data_sample.x
+        x = x.view(self.n_nodes, self.n_features, self.seq_length).permute(0, 2, 1) # [num_nodes, seq_length, num_features]
+        x = x.unsqueeze(0)  # batch size 1
+        x = x.permute(0, 3, 1, 2) #(batch_size, num_features, num_nodes, sequence_length)             # rechanged the size 15/07/2025   
+        y = data_sample.y.long()  # Ensure y is long for classification
+        return x, y
+        
 
 
 class GraphWaveNetRunner(BaseModelRunner):
@@ -17,10 +40,16 @@ class GraphWaveNetRunner(BaseModelRunner):
 
         return x, y
 
-    def train(self, train_loader, val_loader, optimizer, criterion, num_epochs, seq_length, num_features):
+    def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, seq_length, num_features):
+        train_set = GraphWaveNetDataset(train_dataset)
+        val_set = GraphWaveNetDataset(val_dataset)
+        train_loader = DataLoader(train_set, batch_size=1, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=1)
+
         self.model.train()
         for epoch in range(num_epochs):
             for data in train_loader:
+                print(f"{data=}")
                 if data.x.shape[-1] != seq_length * num_features:
                     (f"Warning: Skipping sample with incorrect shape: {data.x.shape}")
                     continue
@@ -78,7 +107,9 @@ class GraphWaveNetRunner(BaseModelRunner):
                         f"Accuracy: {acc:.4f} | F1 Score: {f1:.4f} | MCC: {mcc:.4f}")  
 
 
-    def test(self, test_loader, seq_length, num_features):
+    def test(self, test_dataset, seq_length, num_features):
+        test_set = GraphWaveNetDataset(test_dataset)
+        test_loader = DataLoader(test_set, batch_size=1)
         self.model.eval()
         all_preds_logits = [] # Renamed for clarity: these are raw logits
         all_targets = []    

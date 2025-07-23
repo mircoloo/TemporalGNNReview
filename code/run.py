@@ -27,7 +27,7 @@ from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, mean_sq
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import to_dense_adj
 from tqdm import tqdm
-from utils import load_model
+from utils import load_model, remove_unshaped_samples
 
 torch.manual_seed(42)  # For reproducibility
 
@@ -111,21 +111,20 @@ def main(args: argparse.Namespace) -> None:
     validation_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, val_sedate[0], val_sedate[1], window_size, 'Validation', use_fast_approximation)
     print("-" * 5, "Building test dataset...", "-" * 5)
     test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, test_sedate[0], test_sedate[1], window_size, 'Test', use_fast_approximation)
-    
 
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
-    validation_loader = DataLoader(validation_dataset, batch_size=1, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    print(train_dataset[0])
 
-    num_nodes = train_dataset[0].x.shape[0]
-    print(f"Number of nodes (stocks): {num_nodes}")
+
+    num_nodes =len(filtered_company_list)
+    #train_dataset = remove_unshaped_samples(train_dataset, num_nodes, window_size, 5)
+    n_features = 5 # Set the number of features
+    print(f"Number of nodes (stocks): {num_nodes} {train_dataset[0].x.shape=}")
 
     # ------------------ 4. BUILD THE MODEL FROM CONFIG PARAMS ------------------
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Using device: {device}")
     
     
-
     # ------------------ 5. TRAIN AND TEST THE MODEL USING THE RUNNER ------------------
 
     if args.model == 'dgdnn':
@@ -148,41 +147,50 @@ def main(args: argparse.Namespace) -> None:
         print(f"Model parameters: {sum([p.numel() for p in model_DGDNN.parameters()]):,}")
         runner = DGDNNRunner(model_DGDNN, device)
 
+        # build the optimizer & criterion
         optimizer = optim.Adam(model_DGDNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
         criterion = nn.BCEWithLogitsLoss()
         num_epochs = train_param['epochs']
         alpha = train_param.get('neighbour_radius_coeff', 0.0)
+
+        # Train the model
         runner.train(
-            train_loader, validation_loader, optimizer, criterion, num_epochs,
+            train_dataset, validation_dataset, optimizer, criterion, num_epochs,
             alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes)
-        print("✅ Training finished.")
 
         print("\n" + "="*10 + " TESTING " + "="*10)
-        y_pred, y_true = runner.test(test_loader, window_size, num_nodes)
+        
+        # Test the model
+        y_pred, y_true = runner.test(test_dataset, window_size, num_nodes)
+
+        # Test the results 
         process_test_results(y_pred, y_true)
 
         
     elif args.model == 'graphwavenet':
         print("GraphWaveNet model selected. Running training and evaluation pipeline.")
         GWN = load_model('GraphWaveNet')
+        model_param = model_param['GraphWaveNet']
         model_GWN = GWN(
-            device=device,
-            num_nodes=num_nodes,
-            dropout=0.3,
-            supports=None,
-            gcn_bool=True,
-            addaptadj=True,
-            aptinit=None,
-            in_dim=5,  # <-- number of features
-            out_dim=1,                
-            residual_channels=256, 
-            dilation_channels=256,
-            skip_channels=256,
-            end_channels=512,
-            kernel_size=1,
-            blocks=1,
-            layers=8
+            device=device,              # The computing device (e.g., 'cuda' for GPU, 'cpu' for CPU) where the model and its tensors will reside.
+            num_nodes=num_nodes,        # The total number of nodes in the graph.
+            #dropout=0.3,               # (Optional) The dropout rate for regularization. If uncommented, a fraction of neurons will be randomly set to zero during training to prevent overfitting.
+            supports=None,              # A list of static adjacency matrices or graph supports. If provided, these are used for graph convolutions. If None, the model might learn an adaptive adjacency matrix.
+            gcn_bool=True,              # A boolean flag indicating whether to use Graph Convolutional Network (GCN) layers in the model.
+            addaptadj=True,             # A boolean flag indicating whether to learn an adaptive adjacency matrix. If True, the model will dynamically learn graph connections.
+            aptinit=None,               # (Optional) Initial values for the adaptive adjacency matrix. If 'addaptadj' is True and 'aptinit' is provided, it initializes the adaptive matrix. If None, it's typically initialized randomly.
+            in_dim=n_features,          # The input feature dimension per node. This is the number of features describing each node at each time step.
+            out_dim=1,                  # The output feature dimension per node. For tasks like forecasting a single value (e.g., next stock price), this would be 1.
+            residual_channels=256,      # The number of channels used in the residual connections within the WaveNet architecture.
+            dilation_channels=256,      # The number of channels used in the dilated convolutional layers. These layers are responsible for capturing temporal dependencies.
+            skip_channels=256,          # The number of channels used in the skip connections. Skip connections help in propagating information directly to the output layers, mitigating vanishing gradients.
+            end_channels=512,           # The number of channels in the final output layers of the model, typically before the final prediction head.
+            kernel_size=1,              # The size of the kernel for the temporal convolutional layers. A kernel size of 1 means it operates on individual time steps.
+            blocks=1,                   # The number of sequential blocks in the Graph WaveNet architecture. Each block typically contains multiple layers.
+            layers=8                    # The number of dilated convolutional layers within each block. The dilation factor typically increases with each layer.
         ).to(device)
+
+
         runner = GraphWaveNetRunner(model_GWN, device)
         print(f"Model parameters: {sum([p.numel() for p in model_GWN.parameters()]):,}")
 
@@ -190,11 +198,10 @@ def main(args: argparse.Namespace) -> None:
         criterion = nn.BCEWithLogitsLoss()
         num_epochs = train_param['epochs']
 
-        runner.train(train_loader, validation_loader, optimizer, criterion, num_epochs, window_size, 5)
-        print("✅ Training finished.")
+        runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, window_size, 5)
 
         print("\n" + "="*10 + " TESTING " + "="*10)
-        y_pred, y_true = runner.test(test_loader, window_size, 5)
+        y_pred, y_true = runner.test(test_dataset, window_size, 5)
         process_test_results(y_pred, y_true)
     elif args.model == 'darnn':
         from model_runners.darnn_runner import DARNNRunner
@@ -204,14 +211,18 @@ def main(args: argparse.Namespace) -> None:
             64,
             64,
             T=window_size
+
         ).to(device)
+
         print(f"Model parameters: {sum([p.numel() for p in model_DARNN.parameters()]):,}")
         runner = DARNNRunner(model_DARNN, device)
         optimizer = optim.Adam(model_DARNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
         criterion = nn.BCEWithLogitsLoss()
-        runner.train(train_loader, validation_loader, optimizer, criterion, train_param['epochs'], seq_length=window_size)
-        y_pred, y_true = runner.test(test_loader, seq_length=window_size, num_features=5)
-        process_test_results(y_pred, y_true)    
+        runner.train(train_dataset, validation_dataset, optimizer, criterion, train_param['epochs'], seq_length=window_size)
+        y_pred, y_true = runner.test(test_dataset, seq_length=window_size, num_features=5)
+        process_test_results(y_pred, y_true)   
+
+
     elif args.model == 'hyperstockgraph':
         from model_runners.hyperstockgraph_runner import HyperStockGraphRunner
         NCModel = load_model('HyperStockGraph')
@@ -286,9 +297,6 @@ def main(args: argparse.Namespace) -> None:
         criterion = nn.BCEWithLogitsLoss()
         num_epochs = train_param['epochs']
 
-        train_loader
-        validation_loader
-        test_loader
         runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, window_size, 5)
         print("✅ Training finished.")
 
@@ -298,15 +306,17 @@ def main(args: argparse.Namespace) -> None:
 
 
 
+
 if __name__ == '__main__':
     # Create the parser
-    parser = argparse.ArgumentParser(description="Train and evaluate DGDNN model for a specific stock market.")
+    parser = argparse.ArgumentParser(description="Train and evaluate a model for a specific stock market.")
+
     parser.add_argument('--model', 
                         type=str, 
                         required=True, 
                         choices=['dgdnn', 'graphwavenet', 'darnn', 'hyperstockgraph'],
                         help="The model to run.) #Choose from 'dgdnn', 'graphwavenet', 'darnn', or 'hyperstockgraph'.")
-        # Add the required --market argument
+    # Add the required --market argument
     parser.add_argument(
         '--market',
         type=str,
