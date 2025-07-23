@@ -26,6 +26,8 @@ class Encoder(nn.Module):
 
     def encode(self, x, adj):
         if self.encode_graph:
+            if len(adj.shape) != 2:
+                adj = adj.squeeze()
             input = (x, adj)
             output, _ = self.layers.forward(input)
         else:
@@ -116,7 +118,7 @@ class Temporal_Attention_layer(nn.Module):
         :param x: (batch_size, N, F_in, T)
         :return: (B, T, T)
         '''
-        _, num_of_vertices, num_of_features, num_of_timesteps = x.shape
+        batch_size , num_of_vertices, num_of_features, num_of_timesteps = x.shape
         # print(self.U1)
         lhs = torch.matmul(torch.matmul(x.permute(0, 3, 2, 1), self.U1), self.U2)
         # x:(B, N, F_in, T) -> (B, T, F_in, N)
@@ -177,8 +179,6 @@ class HGCN(Encoder):
         
     def encode(self, x, adj):
         
-        x = x.unsqueeze(0)
-        x = x.permute(0,1,3,2) # Rearranges to (Batch_size, Num_Nodes, Features, Timesteps)
         batch_size, num_of_vertices, num_of_features, num_of_timesteps = x.shape
         # Temporal attention network
         temporal_At = self.tat(x) # First temporal attention  
@@ -187,6 +187,7 @@ class HGCN(Encoder):
         ########  First Temporal Convolution 
         x_TAt = self.time_conv(x_TAt)
         x_TAt = x_TAt.permute(0,2,3,1) # Added to reshape and put the timestamp as last
+
         outputs = []
         ########  Spatial Hyperbolic Graph Encoding Loop
         for time_step in range(num_of_timesteps):

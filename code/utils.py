@@ -64,14 +64,13 @@ def process_test_results(y_hat, y_true):
     Print and return evaluation metrics for test results (binary classification).
     """
     # Convert raw outputs to binary predictions
-    y_pred = [1 if o > 0 else 0 for o in y_hat]
-    y_true = [1 if t > 0 else 0 for t in y_true]
+    
 
-    acc = accuracy_score(y_true, y_pred)
-    precision = precision_score(y_true, y_pred, zero_division=0)
-    recall = recall_score(y_true, y_pred, zero_division=0)
-    f1 = f1_score(y_true, y_pred, zero_division=0)
-    mcc = matthews_corrcoef(y_true, y_pred)
+    acc = accuracy_score(y_true, y_hat)
+    precision = precision_score(y_true, y_hat, zero_division=0)
+    recall = recall_score(y_true, y_hat, zero_division=0)
+    f1 = f1_score(y_true, y_hat, zero_division=0)
+    mcc = matthews_corrcoef(y_true, y_hat)
 
     print(f"Test Accuracy: {acc:.4f}")
     print(f"Test Precision: {precision:.4f}")

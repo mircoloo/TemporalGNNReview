@@ -6,11 +6,11 @@ from torch_geometric.utils import to_dense_adj
 
 class GraphWaveNetRunner(BaseModelRunner):
 
-    def convert_data(self, data, seq_length, num_features):
+    def _convert_data(self, data, seq_length, num_features):
         # data.x: [num_nodes, seq_length * num_features]
         x = data.x
         num_nodes = x.shape[0]
-        x = x.view(num_nodes, 5, -1).permute(0, 2, 1) # [num_nodes, seq_length, num_features]
+        x = x.view(num_nodes, num_features, seq_length).permute(0, 2, 1) # [num_nodes, seq_length, num_features]
         x = x.unsqueeze(0)  # batch size 1
         x = x.permute(0, 3, 1, 2) #(batch_size, num_features, num_nodes, sequence_length)             # rechanged the size 15/07/2025   
         y = data.y.long()  # Ensure y is long for classification
@@ -24,7 +24,7 @@ class GraphWaveNetRunner(BaseModelRunner):
                 if data.x.shape[-1] != seq_length * num_features:
                     (f"Warning: Skipping sample with incorrect shape: {data.x.shape}")
                     continue
-                x, y = self.convert_data(data, seq_length, num_features)
+                x, y = self._convert_data(data, seq_length, num_features)
                 x = x.to(self.device)
                 y = y.to(self.device)
                 optimizer.zero_grad()
@@ -48,7 +48,7 @@ class GraphWaveNetRunner(BaseModelRunner):
                             print(f"Warning: Skipping sample with incorrect shape: {val_data.x.shape}")
                             continue
 
-                        x_val, y_val = self.convert_data(val_data, seq_length, num_features)
+                        x_val, y_val = self._convert_data(val_data, seq_length, num_features)
                         x_val = x_val.to(self.device)
                         y_val = y_val.to(self.device)
 
@@ -80,23 +80,31 @@ class GraphWaveNetRunner(BaseModelRunner):
 
     def test(self, test_loader, seq_length, num_features):
         self.model.eval()
-        all_preds = []
+        all_preds_logits = [] # Renamed for clarity: these are raw logits
         all_targets = []    
         with torch.no_grad():
             for data in test_loader:
                 if data.x.shape[-1] != seq_length * num_features:
                     print(f"Warning: Skipping sample with incorrect shape: {data.x.shape}")
                     continue
-                x, y = self.convert_data(data, seq_length, num_features)
+                x, y = self._convert_data(data, seq_length, num_features)
                 x = x.to(self.device)
                 y = y.to(self.device)
 
-                outputs = self.model(x)
-                outputs = outputs.squeeze(0).squeeze(0)
-                outputs = outputs[:, -1] if outputs.dim() == 2 else outputs  # [num_nodes]
-                preds = (torch.sigmoid(outputs) > 0.5).long()
-                all_preds.append(preds.cpu())           
+                logits = self.model(x)
+                logits = logits.squeeze(0).squeeze(0)
+                logits = logits[:, -1] if logits.dim() == 2 else logits  # [num_nodes]
+                all_preds_logits.append(logits.cpu())           
                 all_targets.append(y.cpu())
-        y_pred = torch.cat(all_preds)
+
+        # Concatenate all raw logit tensors into one
+        concatenated_logits = torch.cat(all_preds_logits, dim=0) 
+
+        # Apply sigmoid and thresholding to the single tensor
+        y_pred = (torch.sigmoid(concatenated_logits) > .5).int()
+
+        # Concatenate true values (this line was already correct)
         y_true = torch.cat(all_targets)
-        return y_pred, y_true
+
+        # Convert to numpy arrays for compatibility with sklearn metrics if used outside
+        return y_pred.numpy(), y_true.numpy()
