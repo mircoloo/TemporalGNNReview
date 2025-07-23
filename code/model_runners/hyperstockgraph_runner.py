@@ -1,23 +1,26 @@
 
 from models.HyperStockGAT.training.models.base_models import NCModel
 from torch_geometric.utils import to_dense_adj
-from torch_geometric.data import Dataset, DataLoader
-from runner_utils import BaseGraphDataset 
+from torch_geometric.data import Dataset
+from torch.utils.data import DataLoader
+from model_runners.runner_utils import BaseGraphDataset
 import torch
 
 
 class HyperStockGraphDataset(BaseGraphDataset):
     def __init__(self, dataset):
-        # Data(x=[1171, 110], edge_index=[2, 1369852], edge_attr=[1369852], y=[1171])
+        # Data(x=[n_nodes, features (5) * timestamps ], edge_index=[2, 1369852], edge_attr=[1369852], y=[1171])
         super().__init__(dataset)
-        assert len(dataset) > 0, "0 data in dataset, impossibile to create the HyperStockDataset" 
-        self.n_nodes = self.dataset[0].x.shape[0]
-        self.n_features = int(self.dataset[0].x.shape[1] / 5)
-        self.seq_length = int(self.dataset[0].x.shape[1] / self.n_features)
-        self.n_edges = self.dataset[0].edge_index.shape[1]
+        
     def __getitem__(self, idx):
         data_sample = self.dataset[idx] 
         x = data_sample.x 
+        res = super().is_input_correct_shaped(x) # check if the input is correct shape, since some samples are wrong
+        if not res:
+            print(data_sample)
+            x = super().adjust_input_shape(x) # in case reshape the tensor appending the last timestamp features
+        
+        # Write specifit reshape code
         x = x.reshape((self.n_nodes, self.n_features, self.seq_length)).permute(0,2,1)
         adj = to_dense_adj(edge_index=data_sample.edge_index, edge_attr=data_sample.edge_attr).squeeze() #create adjacency list
         y =  torch.tensor(data_sample.y.clone().detach(), dtype=torch.float32).unsqueeze(1)
@@ -29,17 +32,6 @@ class HyperStockGraphRunner:
     def __init__(self, model, device):
         self.model: NCModel = model
         self.device = device
-
-    def _convert_data(self, data, seq_length, num_features, num_nodes):
-        x = data['x']  # Node features
-        x = x.reshape((num_nodes, num_features, seq_length)).permute(0,2,1)
-        num_edges = data['edge_index'].shape[1]  # Number of edges
-        adj = to_dense_adj(edge_index=data.edge_index, edge_attr=data.edge_attr).squeeze() #create adjacency list
-        y = torch.tensor(data.y, dtype=torch.float32)  # Assuming binary classification targets
-        # - x.shape [n_nodes, seq_length, features] 
-        # - y.shape [n_nodes, 1] 
-        # - adj.shape [n_nodes, n_nodes] 
-        return x, y, adj
 
     def train(self, 
               train_dataset, 
@@ -55,16 +47,13 @@ class HyperStockGraphRunner:
         
         train_loader = DataLoader(train_set, batch_size=1, shuffle=True)
         val_loader = DataLoader(validation_set, batch_size=1)
-        
+
         for epoch in range(epochs):
             self.model.train()
             train_loss = 0.0
             total_samples = 0
             for batch in train_loader:
                 x, y, adj = batch
-                if x.shape[-1] * x.shape[-2] != seq_length * num_features:
-                    print(f"Wrong input dimensions")
-                    continue
                 
                 y = y.squeeze(0) # remove the batch dimension
                 #x, y, adj = self._convert_data(batch, seq_length, num_features, batch.x.shape[0])
@@ -88,17 +77,15 @@ class HyperStockGraphRunner:
             val_loss = self.evaluate(val_loader, criterion, seq_length, num_features)
             print(f"[Epoch {epoch}] Validation Loss: {val_loss:.4f}")
 
-    def evaluate(self, loader, criterion, seq_length, num_features):
+    def evaluate(self, val_loader, criterion, seq_length, num_features):
+        
         self.model.eval()
         total_loss = 0.0
         total_samples = 0
 
         with torch.no_grad():
-            for batch in loader:
+            for batch in val_loader:
                 x, y, adj = batch
-                if x.shape[-1] * x.shape[-2] != seq_length * num_features:
-                    print(f"Wrong input dimensions")
-                    continue
                 
                 y = y.squeeze(0) # remove the batch dimension
                 #x, y, adj = self._convert_data(batch, seq_length, num_features, batch.x.shape[0])
@@ -113,7 +100,9 @@ class HyperStockGraphRunner:
 
         return total_loss / max(total_samples, 1)
 
-    def test(self, test_loader, seq_length, num_features):
+    def test(self, test_dataset, seq_length, num_features):
+        validation_set = HyperStockGraphDataset(test_dataset)
+        test_loader = DataLoader(test_dataset, batch_size=1)
         self.model.eval()
         predictions = []
         true_values = []

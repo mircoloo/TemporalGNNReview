@@ -36,12 +36,13 @@ class InputAttentionEncoder(nn.Module):
     
     def forward(self, inputs):
         #inputs: [batch_size, T, N]
-        encoded_inputs = torch.zeros((inputs.size(0), self.T, self.M)).cuda()
+        encoded_inputs = torch.zeros((inputs.size(0), self.T, self.M))
         
         #initiale hidden states
         h_tm1 = torch.zeros((inputs.size(0), self.M)).cuda()
         s_tm1 = torch.zeros((inputs.size(0), self.M)).cuda()
         
+        # Calculate Input Attention
         for t in range(self.T):
             #concatenate hidden states
             h_c_concat = torch.cat((h_tm1, s_tm1), dim=1)
@@ -79,15 +80,15 @@ class TemporalAttentionDecoder(nn.Module):
             of previous time window or to initialize it with zeros
         """
         super(self.__class__, self).__init__()
-        self.M = M
-        self.P = P
-        self.T = T
-        self.stateful = stateful
+        self.M = M # Encoder units
+        self.P = P # Decoder units
+        self.T = T # number of timestamps
+        self.stateful = stateful 
         
         self.decoder_lstm = nn.LSTMCell(input_size=1, hidden_size=self.P)
         
         #equation 12 matrices
-        self.W_d = nn.Linear(2*self.P, self.M)
+        self.W_d = nn.Linear(2*self.P, self.M) # [2P, M]
         self.U_d = nn.Linear(self.M, self.M, bias=False)
         self.v_d = nn.Linear(self.M, 1, bias = False)
         
@@ -101,13 +102,13 @@ class TemporalAttentionDecoder(nn.Module):
     def forward(self, encoded_inputs, y):
         
         #initializing hidden states
-        d_tm1 = torch.zeros((encoded_inputs.size(0), self.P)).cuda()
-        s_prime_tm1 = torch.zeros((encoded_inputs.size(0), self.P)).cuda()
-        for t in range(self.T):
+        d_tm1 = torch.zeros((encoded_inputs.size(0), self.P)) #embedding size x decoder units
+        s_prime_tm1 = torch.zeros((encoded_inputs.size(0), self.P))
+        for t in range(self.T): # for each timestamp
             #concatenate hidden states
-            d_s_prime_concat = torch.cat((d_tm1, s_prime_tm1), dim=1)
+            d_s_prime_concat = torch.cat((d_tm1, s_prime_tm1), dim=1) # [embedding size, 2P]
             #temporal attention weights (equation 12)
-            x1 = self.W_d(d_s_prime_concat).unsqueeze_(1).repeat(1, encoded_inputs.shape[1], 1)
+            x1 = self.W_d(d_s_prime_concat).unsqueeze_(1).repeat(1, encoded_inputs.shape[1], 1) 
             y1 = self.U_d(encoded_inputs)
             z1 = torch.tanh(x1 + y1)
             l_i_t = self.v_d(z1)
@@ -137,8 +138,8 @@ class TemporalAttentionDecoder(nn.Module):
 class DARNN(nn.Module):
     def __init__(self, N, M, P, T, stateful_encoder=False, stateful_decoder=False):
         super(self.__class__, self).__init__()
-        self.encoder = InputAttentionEncoder(N, M, T, stateful_encoder).cuda()
-        self.decoder = TemporalAttentionDecoder(M, P, T, stateful_decoder).cuda()
+        self.encoder = InputAttentionEncoder(N, M, T, stateful_encoder)
+        self.decoder = TemporalAttentionDecoder(M, P, T, stateful_decoder)
     def forward(self, X_history, y_history):
         out = self.decoder(self.encoder(X_history), y_history)
         return out

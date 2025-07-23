@@ -86,6 +86,24 @@ def process_test_results(y_hat, y_true):
         "mcc": mcc
     }
 
+def remove_unshaped_samples(orig_dataset, n_nodes:int,sequence_length:int, features:int):
+    expected_second_dimension = features * sequence_length
+    filtered_samples = []
+
+# Iterate through each sample in your dataset
+    for i, sample in enumerate(original_dataset):
+        # Ensure the sample has an 'x' attribute and it's a tensor/array with at least 2 dimensions
+        if hasattr(sample, 'x') and isinstance(sample.x, (torch.Tensor, np.ndarray)) and sample.x.dim() >= 2:
+            # Check the condition
+            if sample.x.shape[1] == expected_second_dimension:
+                filtered_samples.append(sample)
+            else:
+                print(f"Removing sample at index {i} because its x.shape[1] ({sample.x.shape[1]}) "
+                    f"does not match {expected_second_dimension}")
+        else:
+            print(f"Skipping sample at index {i} as it doesn't have a valid 'x' attribute.")
+
+
 
 
 def main() -> None:

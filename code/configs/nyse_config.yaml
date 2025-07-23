@@ -47,6 +47,7 @@ model_params:
       - 256  # Layer 6: diffusion_size[7] + embedding_output_size = 128 + 128
       - 256  # Layer 7: diffusion_size[8] + embedding_output_size = 128 + 128
       - 256  # Layer 8: diffusion_size[9] + embedding_output_size = 128 + 128
+  GraphWaveNet:
 
 # -----------------------------------------------------------------
 

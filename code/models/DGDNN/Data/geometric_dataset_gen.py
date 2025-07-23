@@ -267,7 +267,8 @@ class MyDataset(Dataset):
             #print(f"{box=}")
 
             X = self.node_feature_matrix(box)
-            
+
+
             if X.shape[1] == 0:
                 print(f"Skipping graph {i}: No nodes.")
                 continue
@@ -293,7 +294,7 @@ class MyDataset(Dataset):
             X_final = X_features.permute(1, 0, 2).reshape(X_features.shape[1], -1)
             
             try:
-                X_final = torch.nan_to_num(torch.log1p(X_final), 0)
+                X_final = torch.nan_to_num(torch.log1p(X_final), 0) # log1p normalization
             except Exception as e:
                 print(f"Skipping graph {i} due to log1p error: {e}")
                 continue
