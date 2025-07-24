@@ -125,8 +125,7 @@ def main(args: argparse.Namespace) -> None:
     print(f"Using device: {device}")
     
     
-    # ------------------ 5. TRAIN AND TEST THE MODEL USING THE RUNNER ------------------
-
+    # ------------------ 5. TRAIN AND TEST THE MODEL USING THE RUNNER ------------------s
     if args.model == 'dgdnn':
         DGDNN = load_model('DGDNN')
         model_param = model_param['DGDNN']

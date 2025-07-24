@@ -5,12 +5,12 @@
 # Parameters related to data loading and time periods
 dataset_params:
   market: 'NYSE'
-  #train_sedate: ['2016-05-01', '2017-06-30'] ORIGINAL FROM PAPER
-  train_sedate: ['2010-05-01', '2017-06-30']  # Original from paper
-  #val_sedate: ['2017-07-01', '2017-12-31']
-  val_sedate: ['2017-07-01', '2018-07-01']
-  #test_sedate: ['2018-01-01', '2019-12-31']
-  test_sedate: ['2018-07-02', '2022-12-31']
+  train_sedate: ['2016-05-01', '2017-06-30'] #ORIGINAL FROM PAPER
+  #train_sedate: ['2010-05-01', '2017-06-30']  
+  val_sedate: ['2017-07-01', '2017-12-31'] #ORIGINAL FROM PAPER
+  #val_sedate: ['2017-07-01', '2018-07-01']
+  test_sedate: ['2018-01-01', '2019-12-31'] #ORIGINAL FROM PAPER
+  #test_sedate: ['2018-07-02', '2022-12-31']
   window_size: 22  # From paper: τ = 19
   use_fast_approximation: false
 
@@ -55,5 +55,5 @@ model_params:
 training_params:
   learning_rate: 0.0002      # From paper: 2e-4
   weight_decay: 0.000015     # From paper: 1.5e-5
-  epochs: 1200               # From paper
+  epochs: 300               # From paper
   neighbour_radius_coeff: 2.7e-3  # From paper: α = 2.9e-3
