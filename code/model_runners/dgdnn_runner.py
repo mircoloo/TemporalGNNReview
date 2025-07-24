@@ -31,7 +31,7 @@ class DGDNNRunner(BaseModelRunner):
                 optimizer.step()
                 train_loss += loss.item()
             if use_validation and (epoch % 1 == 0):
-                val_loss, val_acc, val_f1, val_mcc = 0.0, 0.0, 0.0, 0.0
+                val_loss, val_acc, val_prec, val_f1, val_mcc, val_acc, val_f1, val_rec = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
                 self.model.eval()
                 n_val = 0
                 with torch.no_grad():
@@ -45,15 +45,20 @@ class DGDNNRunner(BaseModelRunner):
                         val_loss += criterion(logits, val_sample.y.unsqueeze(1).float()).item()
                         val_acc += accuracy_score(y_true, y_pred)
                         val_f1 += f1_score(y_true, y_pred, zero_division=0)
+                        val_rec += recall_score(y_true, y_pred)
                         val_mcc += matthews_corrcoef(y_true, y_pred)
+                        val_prec += precision_score(y_true, y_pred, zero_division=0)
                         n_val += 1
                         #print(f"{y_pred=}")
                 if n_val > 0:
                     avg_val_loss = val_loss / n_val
                     avg_val_acc = val_acc / n_val
+                    avg_prec_acc = val_prec / n_val
                     avg_val_f1 = val_f1 / n_val
                     avg_val_mcc = val_mcc / n_val
-                    print(f"Epoch {epoch}: Val Loss: {avg_val_loss:.4f}, Val Acc: {avg_val_acc:.4f}, Val F1: {avg_val_f1:.4f},  Val MCC: {avg_val_mcc:.4f}")
+                    avg_val_rec = val_rec / n_val
+                    print(f"Epoch {epoch+1}/{num_epochs} - Val Loss: {avg_val_loss:.4f} - Acc: {avg_val_acc:.4f} - Prec: {avg_prec_acc:.4f} - Rec: {avg_val_rec:.4f} - F1: {avg_val_f1:.4f} - MCC: {avg_val_mcc:.4f}")
+                    
                 self.model.train()
 
     def test(self, test_dataset, window_size, num_nodes):

@@ -10,6 +10,15 @@ class nconv(nn.Module):
         super(nconv,self).__init__()
 
     def forward(self,x, A):
+        # x: [batch_size, channels, num_nodes, sequence_length] (ncvl)
+        # A: [num_nodes, num_nodes] (vw) or a batch of adjacency matrices.
+        # This performs a basic message passing operation: multiplying node features by the adjacency matrix.
+        # It's akin to XA or AX in graph convolution.
+        # 'ncvl' corresponds to N: batch, C: channels, V: nodes, L: sequence length.
+        # 'vw' corresponds to V: nodes, W: nodes (adjacency matrix).
+        # The output 'ncwl' means the original nodes (v) are replaced by the new aggregated nodes (w).
+        # This is essentially X' = A * X or X' = X * A. Given the dimensions, it is (Batch, Channel, Nodes, Length) * (Nodes, Nodes)
+        # which means multiplication happens over the 'Nodes' dimension, effectively aggregating information from neighbors.
         x = torch.einsum('ncvl,vw->ncwl',(x,A))
         return x.contiguous()
 
@@ -73,16 +82,19 @@ class gwnet(nn.Module):
         if supports is not None:
             self.supports_len += len(supports)
 
-        if gcn_bool and addaptadj:
+        if gcn_bool and addaptadj: # Only if GCN is enabled AND adaptive adjacency is enabled
             if aptinit is None:
                 if supports is None:
                     self.supports = []
+                # Learnable node embeddings (e1 and e2 in the paper)
+                # These are used to generate the adaptive adjacency matrix: A_adp = softmax(ReLU(e1 * e2))
                 self.nodevec1 = nn.Parameter(torch.randn(num_nodes, 10).to(device), requires_grad=True).to(device)
                 self.nodevec2 = nn.Parameter(torch.randn(10, num_nodes).to(device), requires_grad=True).to(device)
                 self.supports_len +=1
-            else:
+            else: # If an initial adaptive matrix (aptinit) is provided
                 if supports is None:
                     self.supports = []
+                # Initialize node embeddings using SVD of the provided aptinit matrix for better initialization
                 m, p, n = torch.svd(aptinit)
                 initemb1 = torch.mm(m[:, :10], torch.diag(p[:10] ** 0.5))
                 initemb2 = torch.mm(torch.diag(p[:10] ** 0.5), n[:, :10].t())
@@ -92,27 +104,27 @@ class gwnet(nn.Module):
 
 
 
-
-        for b in range(blocks):
-            additional_scope = kernel_size - 1
-            new_dilation = 1
+        # --- WaveNet Block Construction (Section 3.1.3 "Dilated Causal Convolution Layer") ---
+        for b in range(blocks): # Loop for each block
+            additional_scope = kernel_size - 1 # How much the receptive field increases per layer in this block
+            new_dilation = 1 # Dilation rate starts at 1 for each block
             for i in range(layers):
-                # dilated convolutions
+                # Filter convolution: part of the gated activation unit (tanh branch)
                 self.filter_convs.append(nn.Conv2d(in_channels=residual_channels,
                                                    out_channels=dilation_channels,
                                                    kernel_size=(1,kernel_size),dilation=new_dilation))
-
-                self.gate_convs.append(nn.Conv2d(in_channels=residual_channels,
+                # Gate convolution: part of the gated activation unit (sigmoid branch)
+                self.gate_convs.append(nn.Conv1d(in_channels=residual_channels, # Note: Conv1d here, usually Conv2d in WaveNet
                                                  out_channels=dilation_channels,
                                                  kernel_size=(1, kernel_size), dilation=new_dilation))
 
-                # 1x1 convolution for residual connection
-                self.residual_convs.append(nn.Conv2d(in_channels=dilation_channels,
+                # 1x1 convolution for residual connection (H_out in Fig. 2 (a))
+                self.residual_convs.append(nn.Conv1d(in_channels=dilation_channels, # Input is output of filter*gate
                                                      out_channels=residual_channels,
                                                      kernel_size=(1, 1)))
 
-                # 1x1 convolution for skip connection
-                self.skip_convs.append(nn.Conv2d(in_channels=dilation_channels,
+                # 1x1 convolution for skip connection (S_out in Fig. 2 (a))
+                self.skip_convs.append(nn.Conv1d(in_channels=dilation_channels, # Input is output of filter*gate
                                                  out_channels=skip_channels,
                                                  kernel_size=(1, 1)))
                 self.bn.append(nn.BatchNorm2d(residual_channels))

@@ -54,5 +54,5 @@ model_params:
 training_params:
   learning_rate: 2e-4     # From paper: 2e-4
   weight_decay: 1.5e-5     # From paper: 1.5e-5
-  epochs: 1200               # From paper
+  epochs: 300               # From paper
   neighbour_radius_coeff: 8.6e-3  # From paper: α = 2.9e-3

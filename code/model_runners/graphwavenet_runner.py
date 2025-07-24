@@ -102,9 +102,10 @@ class GraphWaveNetRunner(BaseModelRunner):
                     f1 = f1_score(y_true, y_pred, average='weighted')
                     mcc = matthews_corrcoef(y_true, y_pred)
                     avg_val_loss = total_val_loss / len(all_preds)
+                    rec = recall_score(y_true, y_pred)
 
-                    print(f"[Epoch {epoch}] Val Loss: {avg_val_loss:.4f} | "
-                        f"Accuracy: {acc:.4f} | F1 Score: {f1:.4f} | MCC: {mcc:.4f}")  
+                    print(f"Epoch {epoch+1}/{num_epochs} - Val Loss: {avg_val_loss:.4f} - Acc: {acc:.4f} - Rec: {rec:.4f} - F1: {f1:.4f} - MCC: {mcc:.4f}")
+  
 
 
     def test(self, test_dataset, seq_length, num_features):
