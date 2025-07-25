@@ -13,32 +13,26 @@ class GraphWaveNetDataset(BaseGraphDataset):
     def __getitem__(self, idx):
         data_sample = self.dataset[idx]
         data_sample = self.dataset[idx] 
-        x = data_sample.x 
-        res = super().is_input_correct_shaped(x) # check if the input is correct shape, since some samples are wrong
+        x_real = data_sample.x
+        res = super().is_input_correct_shaped(x_real) # check if the input is correct shape, since some samples are wrong
         if not res:
-            print(data_sample)
-            x = super().adjust_input_shape(x) # in case reshape the tensor appending the last timestamp features
-        x = data_sample.x
-        x = x.view(self.n_nodes, self.n_features, self.seq_length).permute(0, 2, 1) # [num_nodes, seq_length, num_features]
-        x = x.unsqueeze(0)  # batch size 1
-        x = x.permute(0, 3, 1, 2) #(batch_size, num_features, num_nodes, sequence_length)             # rechanged the size 15/07/2025   
+            #print(data_sample)
+            x_real = super().adjust_input_shape(x_real) # in case reshape the tensor appending the last timestamp features
+        
+        # x = x.view(self.n_nodes, self.n_features, self.seq_length).permute(0, 2, 1) # [num_nodes, seq_length, num_features]
+        # x = x.unsqueeze(0)  # batch size 1
+        # x = x.permute(0, 3, 1, 2) #(batch_size, num_features, num_nodes, sequence_length)             # rechanged the size 15/07/2025   
         y = data_sample.y.long()  # Ensure y is long for classification
+        x = x_real.view(self.n_nodes, self.n_features, self.seq_length).permute(1, 0, 2)        # rechanged the size 25/07/2025
+        
+    
+    
         return x, y
         
 
 
 class GraphWaveNetRunner(BaseModelRunner):
 
-    def _convert_data(self, data, seq_length, num_features):
-        # data.x: [num_nodes, seq_length * num_features]
-        x = data.x
-        num_nodes = x.shape[0]
-        x = x.view(num_nodes, num_features, seq_length).permute(0, 2, 1) # [num_nodes, seq_length, num_features]
-        x = x.unsqueeze(0)  # batch size 1
-        x = x.permute(0, 3, 1, 2) #(batch_size, num_features, num_nodes, sequence_length)             # rechanged the size 15/07/2025   
-        y = data.y.long()  # Ensure y is long for classification
-
-        return x, y
 
     def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, seq_length, num_features):
         train_set = GraphWaveNetDataset(train_dataset)
@@ -49,22 +43,22 @@ class GraphWaveNetRunner(BaseModelRunner):
         self.model.train()
         for epoch in range(num_epochs):
             for data in train_loader:
-                print(f"{data=}")
-                if data.x.shape[-1] != seq_length * num_features:
-                    (f"Warning: Skipping sample with incorrect shape: {data.x.shape}")
-                    continue
-                x, y = self._convert_data(data, seq_length, num_features)
+                
+                x, y = data
                 x = x.to(self.device)
                 y = y.to(self.device)
                 optimizer.zero_grad()
-                outputs = self.model(x)  # [1, 1, num_nodes]
-                outputs = outputs.squeeze(0).squeeze(0)  # [num_nodes]
-                outputs = outputs[:, -1] if outputs.dim() == 2 else outputs  # [num_nodes] (last time step for all nodes)
-                loss = criterion(outputs, y.float())
-                preds = (torch.sigmoid(outputs) > 0.5).long()
-                acc = accuracy_score(y.cpu(), preds.cpu())
+
+                output = self.model(x) 
+                output_for_loss = output[:, :, :, -1] 
+                predict = output_for_loss.squeeze()
+                real = y.float().squeeze() # This is (batch_size, num_nodes)
+                loss = criterion(predict, real)
+
                 loss.backward()
                 optimizer.step()
+
+
             if epoch % 5 == 0 and val_loader is not None:
                 self.model.eval()
                 total_val_loss = 0.0
@@ -73,25 +67,22 @@ class GraphWaveNetRunner(BaseModelRunner):
 
                 with torch.no_grad():
                     for val_data in val_loader:
-                        if val_data.x.shape[-1] != seq_length * num_features:
-                            print(f"Warning: Skipping sample with incorrect shape: {val_data.x.shape}")
-                            continue
+                        x, y = data
+                        x = x.to(self.device)
+                        y = y.to(self.device)
+                        optimizer.zero_grad()
 
-                        x_val, y_val = self._convert_data(val_data, seq_length, num_features)
-                        x_val = x_val.to(self.device)
-                        y_val = y_val.to(self.device)
+                        output = self.model(x) 
+                        output_for_loss = output[:, :, :, -1] 
+                        predict = output_for_loss.squeeze()
+                        real = y.float().squeeze() # This is (batch_size, num_nodes)
+                        loss = criterion(predict, real)
+                        total_val_loss += loss.item()
 
-                        val_outputs = self.model(x_val)
-                        val_outputs = val_outputs.squeeze(0).squeeze(0)  # [num_nodes]
-                        val_outputs = val_outputs[:, -1] if val_outputs.dim() == 2 else val_outputs  # [num_nodes]
-
-                        val_loss = criterion(val_outputs, y_val.float())
-                        total_val_loss += val_loss.item()
-
-                        preds = (torch.sigmoid(val_outputs) > 0.5).long()
+                        preds = (torch.sigmoid(predict) > 0.5).long()
 
                         all_preds.append(preds.cpu())
-                        all_targets.append(y_val.cpu())
+                        all_targets.append(real.cpu())
 
                 # After all batches
                 if all_preds:

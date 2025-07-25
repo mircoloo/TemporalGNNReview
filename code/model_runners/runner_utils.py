@@ -9,10 +9,12 @@ class BaseGraphDataset(Dataset):
         """
         self.dataset = dataset
         assert len(dataset) > 0, "0 data in dataset, impossibile to create Dataset" 
+        
         self.n_nodes = self.dataset[0].x.shape[0]
-        self.n_features = int(self.dataset[0].x.shape[1] / 5)
-        self.seq_length = int(self.dataset[0].x.shape[1] / self.n_features)
+        self.seq_length = int(self.dataset[0].x.shape[1] / 5)
+        self.n_features = int(self.dataset[0].x.shape[1] / self.seq_length)
         self.n_edges = self.dataset[0].edge_index.shape[1]
+
         # self.x = dataset.x
         # self.edge_index = dataset.edge_index
         # self.edge_attr = dataset.edge_attr

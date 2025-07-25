@@ -66,7 +66,7 @@ class gcn(nn.Module):
         h = torch.cat(out, dim=1)
         h = self.mlp(h)
         h = F.dropout(h, self.dropout, training=self.training)
-        return h
+        return h 
 
 class gwnet(nn.Module):
     def __init__(self, device, num_nodes, dropout=0.3, supports=None, gcn_bool=True, addaptadj=True, aptinit=None, in_dim=2, out_dim=12, residual_channels=32, dilation_channels=32, skip_channels=256, end_channels=512, kernel_size=2, blocks=4, layers=2):
@@ -246,8 +246,11 @@ if __name__ == '__main__':
     # 1. view: da (nodi, feat*tempo) a (nodi, feat, tempo)
     # 2. permute: da (nodi, feat, tempo) a (feat, nodi, tempo)
     # 3. unsqueeze: aggiunge la dimensione del batch -> (1, feat, nodi, tempo)
+    print(f"{x_real.shape}")
     train_x = x_real.view(n_nodes, in_dim, seq_length).permute(1, 0, 2).unsqueeze(0).to(device)
     
+    print(train_x.shape)
+    raise Exception
     # ✅ Prepara i dati target (y)
     # La forma di y_real (nodi,) è già quasi corretta per il confronto.
     train_y = y_real.to(device)
