@@ -6,7 +6,8 @@ import sys
 from models.DGDNN.Model.dgdnn import DGDNN
 import models.DGDNN.Model.ggd
 import models.DGDNN.Model.catattn
-from models.GraphWaveNet.model import gwnet
+from models.GraphWaveNet.gwnet import gwnet
+
 from models.DARNN.DARNN import DARNN
 #from models.HyperStockGAT.training.models.base_models import NCModel
 from pathlib import Path
