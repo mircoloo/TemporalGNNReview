@@ -179,14 +179,14 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Parametri del grafo e delle sequenze
-    num_nodes = 207
-    in_dim = 2       # Numero di feature per nodo (es. velocità, volume)
-    out_dim = 12     # Numero di passi temporali da predire
-    seq_length = 12  # Lunghezza della sequenza di input
+    num_nodes = 128
+    in_dim = 5       # Numero di feature per nodo (es. velocità, volume)
+    out_dim = 1     # Numero di passi temporali da predire
+    seq_length = 14  # Lunghezza della sequenza di input
     
     # Parametri di training
-    batch_size = 64
-    epochs = 10 # Riduci per un test rapido
+    batch_size = 1
+    epochs = 100 # Riduci per un test rapido
     learning_rate = 0.001
     weight_decay = 0.0001
     
@@ -201,19 +201,63 @@ if __name__ == '__main__':
     # 2. Creazione di Dati Fittizi (Dummy Data)
     # SOSTITUISCI QUESTA PARTE CON IL CARICAMENTO DEI TUOI DATI
     
+
+    p = '/home/mbisoffi/tests/TemporalGNNReview/code/data/datasets/graph/SSE_Train_2016-05-01_2017-06-30_14/graph_0.pt'
+
+    data = torch.load(p, weights_only=False)
+
+    x = data.x  
+    y = data.y
+    n_nodes = x.size(0)
+
+
+    x = x.reshape(n_nodes, 5, 14).permute(0,2,1).unsqueeze(0)
+    print(x.shape)
+    
     # Simula un DataLoader con un loop
     # Input X: (batch, features, nodi, tempo)
     train_x = torch.randn(batch_size, in_dim, num_nodes, seq_length).to(device)
     # Output Y: (batch, tempo, nodi)
-    train_y = torch.randn(batch_size, seq_length, num_nodes).to(device)
+    train_y = torch.randn(batch_size, num_nodes).to(device)
     
     val_x = torch.randn(batch_size, in_dim, num_nodes, seq_length).to(device)
-    val_y = torch.randn(batch_size, seq_length, num_nodes).to(device)
+    val_y = torch.randn(batch_size, num_nodes).to(device)
 
     # Crea una matrice di adiacenza fittizia (support)
     adj_matrix = torch.rand(num_nodes, num_nodes).to(device)
     supports = [adj_matrix]
     
+
+    try:
+        data_path = '/home/mbisoffi/tests/TemporalGNNReview/code/data/datasets/graph/SSE_Train_2016-05-01_2017-06-30_14/graph_0.pt'
+        data = torch.load(data_path, map_location=device)
+        x_real = data.x # Forma presunta: (nodi, feature * tempo)
+        y_real = data.y # Forma presunta: (nodi,)
+    except FileNotFoundError:
+        print(f"File di dati non trovato in {data_path}. Uso dati fittizi.")
+        # Se il file non esiste, crea dati fittizi per far girare lo script
+        x_real = torch.randn(130, in_dim * seq_length).to(device)
+        y_real = torch.randn(130).to(device)
+
+    n_nodes = x_real.size(0)
+
+    # ✅ Prepara i dati di input (x) nella forma corretta per il modello
+    # Forma richiesta: (batch_size, in_dim, n_nodes, seq_length)
+    # 1. view: da (nodi, feat*tempo) a (nodi, feat, tempo)
+    # 2. permute: da (nodi, feat, tempo) a (feat, nodi, tempo)
+    # 3. unsqueeze: aggiunge la dimensione del batch -> (1, feat, nodi, tempo)
+    train_x = x_real.view(n_nodes, in_dim, seq_length).permute(1, 0, 2).unsqueeze(0).to(device)
+    
+    # ✅ Prepara i dati target (y)
+    # La forma di y_real (nodi,) è già quasi corretta per il confronto.
+    train_y = y_real.to(device)
+    
+    # Per questo esempio, usiamo gli stessi dati per la validazione.
+    # In un caso reale, dovresti avere un set di validazione separato.
+    val_x = train_x
+    val_y = train_y
+
+
     # Inizializza lo scaler fittizio
     scaler = DummyScaler()
     
@@ -223,7 +267,7 @@ if __name__ == '__main__':
         num_nodes=num_nodes,
         in_dim=in_dim,
         out_dim=out_dim,
-        supports=supports
+        supports=None
         # Puoi aggiungere altri parametri qui se necessario
     ).to(device)
     
@@ -239,31 +283,38 @@ if __name__ == '__main__':
         model.train()
         optimizer.zero_grad()
         
-        # Il modello si aspetta (batch, features, nodi, tempo)
-        output = model(train_x) # Forma in output: (batch, out_dim, nodi, 1)
+        output = model(train_x) 
+        # Output shape: (batch_size, out_dim, num_nodes, seq_length - 12)
         
-        # Adatta l'output e il target per la funzione di perdita
-        output = output.transpose(1, 3) # -> (batch, 1, nodi, out_dim)
-        real = train_y.unsqueeze(1)    # -> (batch, 1, out_dim, nodi), dobbiamo allineare i nodi
-        real = real.transpose(2, 3)    # -> (batch, 1, nodi, out_dim)
+        # FIX: Select the last predicted time step (index -1 in the last dimension)
+        # Assuming out_dim is 1, this will result in shape (batch_size, 1, num_nodes)
+        output_for_loss = output[:, :, :, -1] 
+
+        # Now, squeeze will correctly reduce it to (batch_size, num_nodes) or (num_nodes,) if batch_size=1
+        predict = scaler.inverse_transform(output_for_loss).squeeze()
+
+        real = train_y # This is (batch_size, num_nodes)
         
-        # De-normalizza (in questo caso, non fa nulla)
-        predict = scaler.inverse_transform(output)
-        
+        # The loss will now be calculated between compatible shapes
         loss = loss_fn(predict, real)
+
         loss.backward()
         optimizer.step()
+
+        print(predict.shape) # Should now be (128,) for batch_size=1, or (batch_size, 128) for batch_size > 1
         
         print(f"Epoch {epoch}/{epochs} | Training Loss: {loss.item():.4f}", end=" | ")
         
         # --- Fase di Validazione ---
         model.eval()
         with torch.no_grad():
-            val_output = model(val_x)
-            val_output = val_output.transpose(1, 3)
-            val_real = val_y.unsqueeze(1).transpose(2, 3)
-            val_predict = scaler.inverse_transform(val_output)
+            val_output = model(val_x) 
             
+            # FIX: Apply the same selection for validation output
+            val_output_for_loss = val_output[:, :, :, -1]
+            val_predict = scaler.inverse_transform(val_output_for_loss).squeeze() 
+
+            val_real = val_y
             val_loss = loss_fn(val_predict, val_real)
-            
+            print(val_predict.shape) # Should also be (128,) for batch_size=1, or (batch_size, 128) for batch_size > 1
             print(f"Validation Loss: {val_loss.item():.4f}")
