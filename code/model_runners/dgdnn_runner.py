@@ -8,6 +8,7 @@ from runner_utils import BaseGraphDataset
 
 
 
+
 class DGDNNRunner(BaseModelRunner):
     def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes, use_validation=True):
         self.model.train()

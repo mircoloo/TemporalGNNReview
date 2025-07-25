@@ -307,6 +307,11 @@ def main(args: argparse.Namespace) -> None:
 
 
 if __name__ == '__main__':
+
+    from torch.utils.tensorboard import SummaryWriter
+
+    writer = SummaryWriter()
+    writer.close()
     # Create the parser
     parser = argparse.ArgumentParser(description="Train and evaluate a model for a specific stock market.")
 
