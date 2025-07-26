@@ -4,13 +4,21 @@ import torch
 from torch_geometric.utils import to_dense_adj
 from torch_geometric.loader import DataLoader
 from runner_utils import BaseGraphDataset
-
+from torch.utils.tensorboard import SummaryWriter
 
 
 
 
 class DGDNNRunner(BaseModelRunner):
+
+    def __init__(self, model, device, market_name):
+        super().__init__(model, device, market_name)
+        self.model_name = 'DGDNN'
+    
+
     def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes, use_validation=True):
+        
+        writer = SummaryWriter('runs/')
         self.model.train()
         train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
         val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
@@ -28,6 +36,7 @@ class DGDNNRunner(BaseModelRunner):
                 loss = criterion(outputs, C) \
                        + alpha * neighbor_distance_regularizer(self.model.theta) \
                        + theta_regularizer(self.model.theta)
+                writer.add_scalar(f'{self.model_name}/{self.market_name}/loss_train', loss.item(), epoch)
                 loss.backward()
                 optimizer.step()
                 train_loss += loss.item()
@@ -44,6 +53,10 @@ class DGDNNRunner(BaseModelRunner):
                         y_true = val_sample.y.detach().cpu()
                         y_pred = (torch.sigmoid(logits) > 0.5).int().detach().cpu().squeeze()
                         val_loss += criterion(logits, val_sample.y.unsqueeze(1).float()).item()
+                        
+                        writer.add_scalar(f'{self.model_name}/{self.market_name}/loss_val', val_loss, epoch)
+                        
+                        
                         val_acc += accuracy_score(y_true, y_pred)
                         val_f1 += f1_score(y_true, y_pred, zero_division=0)
                         val_rec += recall_score(y_true, y_pred)
@@ -54,13 +67,19 @@ class DGDNNRunner(BaseModelRunner):
                 if n_val > 0:
                     avg_val_loss = val_loss / n_val
                     avg_val_acc = val_acc / n_val
-                    avg_prec_acc = val_prec / n_val
+                    avg_val_prec = val_prec / n_val
                     avg_val_f1 = val_f1 / n_val
                     avg_val_mcc = val_mcc / n_val
                     avg_val_rec = val_rec / n_val
-                    print(f"Epoch {epoch+1}/{num_epochs} - Val Loss: {avg_val_loss:.4f} - Acc: {avg_val_acc:.4f} - Prec: {avg_prec_acc:.4f} - Rec: {avg_val_rec:.4f} - F1: {avg_val_f1:.4f} - MCC: {avg_val_mcc:.4f}")
+                    writer.add_scalar(f'{self.model_name}/{self.market_name}/acc_val', avg_val_acc, epoch)
+                    writer.add_scalar(f'{self.model_name}/{self.market_name}/prec_val', avg_val_prec, epoch)
+                    writer.add_scalar(f'{self.model_name}/{self.market_name}/rec_val', avg_val_rec, epoch)
+                    writer.add_scalar(f'{self.model_name}/{self.market_name}/mcc_val', avg_val_mcc, epoch)
+
+                    print(f"Epoch {epoch+1}/{num_epochs} - Val Loss: {avg_val_loss:.4f} - Acc: {avg_val_acc:.4f} - Prec: {avg_val_prec:.4f} - Rec: {avg_val_rec:.4f} - F1: {avg_val_f1:.4f} - MCC: {avg_val_mcc:.4f}")
                     
                 self.model.train()
+        writer.close()
 
     def test(self, test_dataset, window_size, num_nodes):
         test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)

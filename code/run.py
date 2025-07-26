@@ -36,7 +36,7 @@ torch.manual_seed(42)  # For reproducibility
 # You might need to adjust them if your project layout is different.
 try:
     from dataset_utils import filter_stocks_from_timeperiod, retrieve_company_list
-    from models.DGDNN.Data.geometric_dataset_gen import MyDataset as MyGeometricDataset
+    from data.geometric_dataset_gen import MyDataset as MyGeometricDataset
     from utils import (neighbor_distance_regularizer,
                        theta_regularizer, load_model, process_test_results)
 except ImportError as e:
@@ -144,7 +144,7 @@ def main(args: argparse.Namespace) -> None:
         ).to(device)
     
         print(f"Model parameters: {sum([p.numel() for p in model_DGDNN.parameters()]):,}")
-        runner = DGDNNRunner(model_DGDNN, device)
+        runner = DGDNNRunner(model_DGDNN, device, market_name)
 
         # build the optimizer & criterion
         optimizer = optim.Adam(model_DGDNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
@@ -190,7 +190,7 @@ def main(args: argparse.Namespace) -> None:
         ).to(device)
 
 
-        runner = GraphWaveNetRunner(model_GWN, device)
+        runner = GraphWaveNetRunner(model_GWN, device, market_name)
         print(f"Model parameters: {sum([p.numel() for p in model_GWN.parameters()]):,}")
 
         optimizer = optim.Adam(model_GWN.parameters(), lr=0.001)
@@ -214,7 +214,7 @@ def main(args: argparse.Namespace) -> None:
         ).to(device)
 
         print(f"Model parameters: {sum([p.numel() for p in model_DARNN.parameters()]):,}")
-        runner = DARNNRunner(model_DARNN, device)
+        runner = DARNNRunner(model_DARNN, device, market_name)
         optimizer = optim.Adam(model_DARNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
         criterion = nn.BCEWithLogitsLoss()
         runner.train(train_dataset, validation_dataset, optimizer, criterion, train_param['epochs'], seq_length=window_size)
@@ -288,7 +288,7 @@ def main(args: argparse.Namespace) -> None:
 
         model_HSG = NCModel(args).to(device)
 
-        runner = HyperStockGraphRunner(model_HSG, device)
+        runner = HyperStockGraphRunner(model_HSG, device, market_name)
         print(f"Model parameters: {sum([p.numel() for p in model_HSG.parameters()]):,}")
         print("Model created successfully:")
 

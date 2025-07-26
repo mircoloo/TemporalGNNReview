@@ -2,8 +2,9 @@ from model_runners.runner_utils import BaseGraphDataset
 from model_runners.base_runner import BaseModelRunner
 import torch
 from torch_geometric.loader import DataLoader
-from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, recall_score
+from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, precision_score, recall_score
 from torch_geometric.utils import to_dense_adj
+from torch.utils.tensorboard import SummaryWriter
 
 
 class GraphWaveNetDataset(BaseGraphDataset):
@@ -32,9 +33,12 @@ class GraphWaveNetDataset(BaseGraphDataset):
 
 
 class GraphWaveNetRunner(BaseModelRunner):
-
+    def __init__(self, model, device, market_name):
+        super().__init__(model, device, market_name)
+        self.model_name = "GWNet"
 
     def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, seq_length, num_features):
+        writer = SummaryWriter('runs/')
         train_set = GraphWaveNetDataset(train_dataset)
         val_set = GraphWaveNetDataset(val_dataset)
         train_loader = DataLoader(train_set, batch_size=1, shuffle=True)
@@ -54,7 +58,7 @@ class GraphWaveNetRunner(BaseModelRunner):
                 predict = output_for_loss.squeeze()
                 real = y.float().squeeze() # This is (batch_size, num_nodes)
                 loss = criterion(predict, real)
-
+                writer.add_scalar(f'{self.model_name}/{self.market_name}/loss_train', loss.item(), epoch)
                 loss.backward()
                 optimizer.step()
 
@@ -77,6 +81,7 @@ class GraphWaveNetRunner(BaseModelRunner):
                         predict = output_for_loss.squeeze()
                         real = y.float().squeeze() # This is (batch_size, num_nodes)
                         loss = criterion(predict, real)
+                        
                         total_val_loss += loss.item()
 
                         preds = (torch.sigmoid(predict) > 0.5).long()
@@ -84,20 +89,28 @@ class GraphWaveNetRunner(BaseModelRunner):
                         all_preds.append(preds.cpu())
                         all_targets.append(real.cpu())
 
+                writer.add_scalar(f'{self.model_name}/{self.market_name}/loss_val', total_val_loss, epoch)
+                
                 # After all batches
                 if all_preds:
                     y_true = torch.cat(all_targets)
                     y_pred = torch.cat(all_preds)
 
                     acc = accuracy_score(y_true, y_pred)
+                    prec = precision_score(y_true, y_pred)
                     f1 = f1_score(y_true, y_pred, average='weighted')
                     mcc = matthews_corrcoef(y_true, y_pred)
                     avg_val_loss = total_val_loss / len(all_preds)
                     rec = recall_score(y_true, y_pred)
+                    
+                    writer.add_scalar(f'{self.model_name}/{self.market_name}/acc_val', acc, epoch)
+                    writer.add_scalar(f'{self.model_name}/{self.market_name}/prec_val', prec, epoch)
+                    writer.add_scalar(f'{self.model_name}/{self.market_name}/rec_val', rec, epoch)
+                    writer.add_scalar(f'{self.model_name}/{self.market_name}/mcc_val', mcc, epoch)
 
                     print(f"Epoch {epoch+1}/{num_epochs} - Val Loss: {avg_val_loss:.4f} - Acc: {acc:.4f} - Rec: {rec:.4f} - F1: {f1:.4f} - MCC: {mcc:.4f}")
   
-
+        writer.close()
 
     def test(self, test_dataset, seq_length, num_features):
         test_set = GraphWaveNetDataset(test_dataset)
