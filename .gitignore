@@ -13,3 +13,4 @@ code/models/weights/
 code/logs/
 code/sbatch_outputs
 code/sbatch_scripts
+runs/
