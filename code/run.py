@@ -180,11 +180,11 @@ def main(args: argparse.Namespace) -> None:
             aptinit=None,               # (Optional) Initial values for the adaptive adjacency matrix. If 'addaptadj' is True and 'aptinit' is provided, it initializes the adaptive matrix. If None, it's typically initialized randomly.
             in_dim=n_features,          # The input feature dimension per node. This is the number of features describing each node at each time step.
             out_dim=1,                  # The output feature dimension per node. For tasks like forecasting a single value (e.g., next stock price), this would be 1.
-            residual_channels=256,      # The number of channels used in the residual connections within the WaveNet architecture.
-            dilation_channels=256,      # The number of channels used in the dilated convolutional layers. These layers are responsible for capturing temporal dependencies.
-            skip_channels=256,          # The number of channels used in the skip connections. Skip connections help in propagating information directly to the output layers, mitigating vanishing gradients.
-            end_channels=512,           # The number of channels in the final output layers of the model, typically before the final prediction head.
-            kernel_size=1,              # The size of the kernel for the temporal convolutional layers. A kernel size of 1 means it operates on individual time steps.
+            residual_channels=32,      # The number of channels used in the residual connections within the WaveNet architecture.
+            dilation_channels=32,      # The number of channels used in the dilated convolutional layers. These layers are responsible for capturing temporal dependencies.
+            skip_channels=32,          # The number of channels used in the skip connections. Skip connections help in propagating information directly to the output layers, mitigating vanishing gradients.
+            end_channels=256,           # The number of channels in the final output layers of the model, typically before the final prediction head.
+            kernel_size=3,              # The size of the kernel for the temporal convolutional layers. A kernel size of 1 means it operates on individual time steps.
             blocks=1,                   # The number of sequential blocks in the Graph WaveNet architecture. Each block typically contains multiple layers.
             layers=8                    # The number of dilated convolutional layers within each block. The dilation factor typically increases with each layer.
         ).to(device)

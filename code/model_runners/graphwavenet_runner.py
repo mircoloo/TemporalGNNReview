@@ -123,15 +123,17 @@ class GraphWaveNetRunner(BaseModelRunner):
                 if data.x.shape[-1] != seq_length * num_features:
                     print(f"Warning: Skipping sample with incorrect shape: {data.x.shape}")
                     continue
-                x, y = self._convert_data(data, seq_length, num_features)
+                x, y = data
                 x = x.to(self.device)
                 y = y.to(self.device)
 
-                logits = self.model(x)
-                logits = logits.squeeze(0).squeeze(0)
-                logits = logits[:, -1] if logits.dim() == 2 else logits  # [num_nodes]
-                all_preds_logits.append(logits.cpu())           
-                all_targets.append(y.cpu())
+                output = self.model(x) 
+                output_for_loss = output[:, :, :, -1] 
+                predict = output_for_loss.squeeze()
+                real = y.float().squeeze() # This is (batch_size, num_nodes)
+                preds = (torch.sigmoid(predict) > 0.5).long()
+                all_preds_logits.append(preds.cpu())           
+                all_targets.append(real.cpu())
 
         # Concatenate all raw logit tensors into one
         concatenated_logits = torch.cat(all_preds_logits, dim=0) 
