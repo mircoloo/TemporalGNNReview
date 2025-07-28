@@ -27,7 +27,6 @@ from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, mean_sq
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import to_dense_adj
 from tqdm import tqdm
-from utils import load_model, remove_unshaped_samples
 
 torch.manual_seed(42)  # For reproducibility
 
@@ -116,7 +115,6 @@ def main(args: argparse.Namespace) -> None:
 
 
     num_nodes =len(filtered_company_list)
-    #train_dataset = remove_unshaped_samples(train_dataset, num_nodes, window_size, 5)
     n_features = 5 # Set the number of features
     print(f"Number of nodes (stocks): {num_nodes} {train_dataset[0].x.shape=}")
 
@@ -156,7 +154,7 @@ def main(args: argparse.Namespace) -> None:
         runner.train(
             train_dataset, validation_dataset, optimizer, criterion, num_epochs,
             alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes,
-            batch_size=8)
+            batch_size=32)
 
         print("\n" + "="*10 + " TESTING " + "="*10)
         
@@ -171,46 +169,44 @@ def main(args: argparse.Namespace) -> None:
         print("GraphWaveNet model selected. Running training and evaluation pipeline.")
         GWN = load_model('GraphWaveNet')
         model_param = model_param['GraphWaveNet']
+        
+        # Prepare model config
+        model_config = {
+            'num_nodes': num_nodes,
+            'in_dim': n_features,
+            'out_dim': 1,
+            'residual_channels': model_param['residual_channels'],
+            'dilation_channels': model_param['dilation_channels'],
+            'skip_channels': model_param['skip_channels'],
+            'end_channels': model_param['end_channels'],
+            'kernel_size': model_param['kernel_size'],
+            'blocks': model_param['blocks'],
+            'layers': model_param['layers'],
+            'dropout': 0.3,
+            'gcn_bool': True,
+            'addaptadj': True,
+        }
+        
         model_GWN = GWN(
-            device=device,              # The computing device (e.g., 'cuda' for GPU, 'cpu' for CPU) where the model and its tensors will reside.
-            num_nodes=num_nodes,        # The total number of nodes in the graph.
-            #dropout=0.3,               # (Optional) The dropout rate for regularization. If uncommented, a fraction of neurons will be randomly set to zero during training to prevent overfitting.
-            supports=None,              # A list of static adjacency matrices or graph supports. If provided, these are used for graph convolutions. If None, the model might learn an adaptive adjacency matrix.
-            gcn_bool=True,              # A boolean flag indicating whether to use Graph Convolutional Network (GCN) layers in the model.
-            addaptadj=True,             # A boolean flag indicating whether to learn an adaptive adjacency matrix. If True, the model will dynamically learn graph connections.
-            aptinit=None,               # (Optional) Initial values for the adaptive adjacency matrix. If 'addaptadj' is True and 'aptinit' is provided, it initializes the adaptive matrix. If None, it's typically initialized randomly.
-            in_dim=n_features,          # The input feature dimension per node. This is the number of features describing each node at each time step.
-            out_dim=1,                  # The output feature dimension per node. For tasks like forecasting a single value (e.g., next stock price), this would be 1.
-            residual_channels=32,      # The number of channels used in the residual connections within the WaveNet architecture.
-            dilation_channels=32,      # The number of channels used in the dilated convolutional layers. These layers are responsible for capturing temporal dependencies.
-            skip_channels=32,          # The number of channels used in the skip connections. Skip connections help in propagating information directly to the output layers, mitigating vanishing gradients.
-            end_channels=256,           # The number of channels in the final output layers of the model, typically before the final prediction head.
-            kernel_size=3,              # The size of the kernel for the temporal convolutional layers. A kernel size of 1 means it operates on individual time steps.
-            blocks=1,                   # The number of sequential blocks in the Graph WaveNet architecture. Each block typically contains multiple layers.
-            layers=8                    # The number of dilated convolutional layers within each block. The dilation factor typically increases with each layer.
+            device=device,
+            **model_config
         ).to(device)
-
 
         runner = GraphWaveNetRunner(model_GWN, device, market_name)
         print(f"Model parameters: {sum([p.numel() for p in model_GWN.parameters()]):,}")
 
-        optimizer = optim.Adam(model_GWN.parameters(), lr=0.001)
+        # Training setup
+        optimizer = optim.Adam(model_GWN.parameters(), lr=0.001, weight_decay=0.0001)
         criterion = nn.BCEWithLogitsLoss()
         num_epochs = train_param['epochs']
+        batch_size = 16
 
-        runner.train(
-            train_dataset, 
-            validation_dataset, 
-            optimizer, 
-            criterion, 
-            num_epochs, 
-            window_size, 
-            5,  # num_features
-            batch_size=16  # Add batch_size parameter
-        )
+
+        runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, window_size, n_features, batch_size=batch_size)
+        print("✅ Training finished.")
 
         print("\n" + "="*10 + " TESTING " + "="*10)
-        y_pred, y_true = runner.test(test_dataset, window_size, 5)
+        y_pred, y_true = runner.test(test_dataset, window_size, n_features, batch_size=batch_size, config=model_config)
         process_test_results(y_pred, y_true)
     elif args.model == 'darnn':
         from model_runners.darnn_runner import DARNNRunner

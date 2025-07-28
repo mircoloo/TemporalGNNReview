@@ -48,6 +48,16 @@ model_params:
       - 256  # Layer 7: diffusion_size[8] + embedding_output_size = 128 + 128
       - 256  # Layer 8: diffusion_size[9] + embedding_output_size = 128 + 128
   GraphWaveNet:
+    layers: 8
+    blocks: 1
+    residual_channels: 32
+    dilation_channels: 32
+    skip_channels: 32
+    end_channels: 256
+    kernel_size: 3
+    gcn_bool: true
+    addaptadj: true
+    dropout: 0.3
 
 # -----------------------------------------------------------------
 
