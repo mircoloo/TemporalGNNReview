@@ -1,6 +1,6 @@
 
 from model_runners.base_runner import BaseModelRunner
-from models.HyperStockGAT.training.models.base_models import NCModel
+from models.HyperStockGAT.models.base_models import NCModel
 from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, recall_score
 from torch_geometric.utils import to_dense_adj
 from torch.utils.data import DataLoader
