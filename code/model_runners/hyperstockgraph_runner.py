@@ -1,9 +1,11 @@
 
+from model_runners.base_runner import BaseModelRunner
 from models.HyperStockGAT.training.models.base_models import NCModel
 from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, recall_score
 from torch_geometric.utils import to_dense_adj
 from torch.utils.data import DataLoader
 from model_runners.runner_utils import BaseGraphDataset
+from torch.utils.tensorboard import SummaryWriter
 import torch
 
 
@@ -27,10 +29,10 @@ class HyperStockGraphDataset(BaseGraphDataset):
 
 
 
-class HyperStockGraphRunner:
-    def __init__(self, model, device):
-        self.model: NCModel = model
-        self.device = device
+class HyperStockGraphRunner(BaseModelRunner):
+    def __init__(self, model, device, market_name):
+        super().__init__(model, device, market_name)
+        self.model_name = "HyperStockGAT"
 
     def train(self, 
               train_dataset, 
@@ -40,6 +42,7 @@ class HyperStockGraphRunner:
               epochs: int, 
               seq_length: int, 
               num_features: int):
+        writer = SummaryWriter(f'runs/{self.market_name}/{self.model_name}')
         # Convert to HyperStockGraphDataset
         train_set = HyperStockGraphDataset(train_dataset)
         validation_set = HyperStockGraphDataset(validation_dataset)
@@ -57,7 +60,7 @@ class HyperStockGraphRunner:
                 y = y.squeeze(0) # remove the batch dimension
                 #x, y, adj = self._convert_data(batch, seq_length, num_features, batch.x.shape[0])
                 x, y, adj = x.to(self.device), y.to(self.device), adj.to(self.device)
-                
+                print(f"x.shape: {x.shape}, adj.shape: {adj.shape}, y.shape: {y.shape}")
                 optimizer.zero_grad()
                 emb = self.model.encode(x, adj)
                 output = self.model.decode(emb, adj)
