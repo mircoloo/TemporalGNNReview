@@ -39,6 +39,7 @@ class BaseModel(nn.Module):
     def encode(self, x, adj):
         if self.manifold.name == 'Hyperboloid':
             o = torch.zeros_like(x)
+            print(f"o shape: {o.shape}, x shape: {x.shape} o[:, 0:1] shape: {o[:, 0:1].shape}")
             x = torch.cat([o[:, 0:1], x], dim=1)
         h = self.encoder.encode(x, adj)
         return h

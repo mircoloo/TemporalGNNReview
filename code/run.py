@@ -125,6 +125,7 @@ def main(args: argparse.Namespace) -> None:
     
     # ------------------ 5. TRAIN AND TEST THE MODEL USING THE RUNNER ------------------s
     if args.model == 'dgdnn':
+        print("DGDNN model selected. Running training and evaluation pipeline.")
         DGDNN = load_model('DGDNN')
         model_param = model_param['DGDNN']
         model_DGDNN = DGDNN(
@@ -228,9 +229,9 @@ def main(args: argparse.Namespace) -> None:
         process_test_results(y_pred, y_true)   
 
 
-    elif args.model == 'hyperstockgraph':
+    elif args.model == 'hyperstockgat':
         from model_runners.hyperstockgraph_runner import HyperStockGraphRunner
-        NCModel = load_model('HyperStockGraph')
+        NCModel = load_model('HyperStockGAT')
         
         args = argparse.Namespace(
             p='../data/2013-01-01',
@@ -249,7 +250,7 @@ def main(args: argparse.Namespace) -> None:
             dropout=0.2,
             model='HGCN',
             dim=256,
-            manifold='PoincareBall',
+            manifold='Euclidean',
             c=1.0,
             cuda=0,
             epochs=5000,
@@ -286,7 +287,7 @@ def main(args: argparse.Namespace) -> None:
             normalize_adj=1,
             split_seed=1234,
             device = device,
-            num_feat = 5,  # Assuming each node has 5 features
+            feat_dim = 5,  # Assuming each node has 5 features
             num_nodes = num_nodes,  # Number of nodes in the graph
             n_classes = 1
         )
@@ -324,8 +325,8 @@ if __name__ == '__main__':
     parser.add_argument('--model', 
                         type=str, 
                         required=True, 
-                        choices=['dgdnn', 'graphwavenet', 'darnn', 'hyperstockgraph'],
-                        help="The model to run.) #Choose from 'dgdnn', 'graphwavenet', 'darnn', or 'hyperstockgraph'.")
+                        choices=['dgdnn', 'graphwavenet', 'darnn', 'hyperstockgat'],
+                        help="The model to run.) #Choose from 'dgdnn', 'graphwavenet', 'darnn', or 'hyperstockgat'.")
     # Add the required --market argument
     parser.add_argument(
         '--market',

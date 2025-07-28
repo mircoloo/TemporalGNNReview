@@ -61,7 +61,7 @@ args = Namespace(
         dropout=0.2,
         model='HGCN',
         dim=256,
-        manifold='PoincareBall',
+        manifold='Hyperboloid',
         c=1.0,
         cuda=0,
         epochs=5000,
@@ -106,7 +106,7 @@ data = torch.load(p, weights_only=False)
 num_nodes = data.x.shape[0]  # Number of nodes
 
 
-args.num_feat = 5  # Assuming each node has 5 features
+args.feat_dim = 5  # Assuming each node has 5 features
 args.num_nodes = num_nodes  # Number of nodes in the graph
 args.l = int(data.x.shape[1] / 5)  # Length of the time series sequence for each node
 args.n_classes = 1  # Assuming a binary classification task
@@ -116,12 +116,12 @@ args.cuda = 0 if args.device == 'cuda' else -1
 
 
 x = data['x'].to(args.device)  # Node features
-x = x.reshape((args.num_nodes, args.num_feat, args.l)).permute(0,2,1)  # Reshape to (n_nodes, l, feat_dim)
+x = x.reshape((args.num_nodes, args.feat_dim, args.l)).permute(0,2,1)  # Reshape to (n_nodes, l, feat_dim)
 num_edges = data['edge_index'].shape[1]  # Number of edges
 adj = to_dense_adj(edge_index=data.edge_index, edge_attr=data.edge_attr).squeeze().to(args.device)  # Adjacency matrix
 
 
-print(x.shape, adj.shape)
+print(f"x.shape: {x.shape}, adj.shape: {adj.shape}")
 
 print(f"Using device: {args.device}")
 
@@ -150,7 +150,7 @@ for submodule in model.modules():
 # For this example, we'll create random dummy data with the correct shapes.
 
 # Graph data
-features = torch.rand(args.num_nodes, args.l, args.num_feat).to(args.device) # Node features
+features = torch.rand(args.num_nodes, args.l, args.feat_dim).to(args.device) # Node features
 adj = torch.rand(args.num_nodes, args.num_nodes).to(args.device)       # Adjacency matrix
 
 # Financial data for the loss calculation
@@ -177,14 +177,15 @@ for epochs in range(1000):
     
     # Enable anomaly detection for more detailed debugging if NaNs persist
     # torch.autograd.set_detect_anomaly(True)
-    
+
+   
+
     emb = model.encode(x, adj)
     out = model.decode(emb, adj)
     
     # Disable anomaly detection if it was enabled
     # torch.autograd.set_detect_anomaly(False)
     
-    print("Model output (logits) min:", out.min().item())
     print("Model output (logits) max:", out.max().item())
     if torch.isnan(out).any():
         print("NaNs found in model output!")

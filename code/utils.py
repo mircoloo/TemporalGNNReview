@@ -44,7 +44,7 @@ def load_model(model_name: str):
             return gwnet
         case "DARNN":
             return DARNN
-        case "HyperStockGraph":
+        case "HyperStockGAT":
             return NCModel
         case _:  # default case for any other model name
             raise ValueError(f"Unknown model name: {model_name}")

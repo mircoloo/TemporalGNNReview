@@ -153,10 +153,10 @@ class HGCN(Encoder):
         super(HGCN, self).__init__(c)
         # self.grup = gru(5,32)
         # self.attention_temp = Attention(32)
-        self.tat = Temporal_Attention_layer(args.num_feat, args.num_nodes, int(args.l))
+        self.tat = Temporal_Attention_layer(args.feat_dim, args.num_nodes, int(args.l))
         self.tat2 = Temporal_Attention_layer(args.dim, args.num_nodes, int(args.l))
         self.manifold = getattr(manifolds, args.manifold)()
-        self.num_feat = args.num_feat
+        self.feat_dim = args.feat_dim
         self.num_nodes = args.num_nodes
         self.dim = args.dim
         assert args.num_layers > 1
@@ -192,7 +192,7 @@ class HGCN(Encoder):
         ########  Spatial Hyperbolic Graph Encoding Loop
         for time_step in range(num_of_timesteps):
             y = x_TAt[:,:,:,time_step]
-            y = y.reshape((self.num_nodes, self.num_feat))
+            y = y.reshape((self.num_nodes, self.feat_dim))
             x_tan = self.manifold.proj_tan0(y, self.curvatures[0])
             x_hyp = self.manifold.expmap0(x_tan, c=self.curvatures[0])
             x_hyp = self.manifold.proj(x_hyp, c=self.curvatures[0])

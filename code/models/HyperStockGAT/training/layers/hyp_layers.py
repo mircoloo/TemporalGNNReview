@@ -21,7 +21,7 @@ def get_dim_act_curv(args):
     else:
         act = getattr(F, args.act)
     acts = [act] * (args.num_layers - 1)
-    dims = [args.num_feat] + ([args.dim] * (args.num_layers - 1))
+    dims = [args.feat_dim] + ([args.dim] * (args.num_layers - 1))
     if args.task in ['lp', 'rec']:
         dims += [args.dim]
         acts += [act]
