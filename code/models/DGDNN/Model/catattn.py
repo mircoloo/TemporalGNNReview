@@ -5,49 +5,45 @@ from torch import Tensor
 
 
 class CatMultiAttn(nn.Module):
-    def __init__(
-        self,
-        input_time: int,       # T1 + T2: This is the combined feature dimension after concatenating 'h' (diffused) and 'h_prime' (hierarchical/original). 
-        num_heads: int,        # Number of attention heads for MultiheadAttention.
-        hidden_dim: int,       # Hidden dimension for the projection layers within the attention block.
-        output_dim: int,       # Final output dimension of this attention module.
-        use_activation: bool   # Whether to apply GELU activation in the projection layers.
-    ):
-        """
-        Args:
-            input_time (int): Combined time dimension after concatenation (T1 + T2)
-            num_heads (int): Number of attention heads
-            hidden_dim (int): Hidden output dimension (E_h)
-            use_activation (bool): Whether to apply GELU activation
-        """
+    def __init__(self, input_time, num_heads, hidden_dim, output_dim, use_activation=True):
         super().__init__()
+        self.num_heads = num_heads
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
         self.use_activation = use_activation
 
-        self.attn = nn.MultiheadAttention(embed_dim=input_time, num_heads=num_heads)
-        self.norm = nn.LayerNorm(input_time)  # Apply norm on attention output
-
-        self.proj = nn.Sequential(
-            nn.Linear(input_time, hidden_dim),
-            nn.GELU() if use_activation else nn.Identity(),
-            nn.Linear(hidden_dim, output_dim)
+        # Multi-head attention layer
+        self.multi_head_attn = nn.MultiheadAttention(
+            embed_dim=input_time,
+            num_heads=num_heads,
+            batch_first=True
         )
+        
+        # Output projection
+        self.out_proj = nn.Linear(input_time, output_dim)
 
-    def forward(self, h: Tensor, h_prime: Tensor) -> Tensor:
+    def forward(self, h: torch.Tensor, h_prime: torch.Tensor) -> torch.Tensor:
         """
+        Forward pass with batch support
         Args:
-            h (Tensor): [N, T1]
-            h_prime (Tensor): [N, T2]
-
+            h: [B, N, diffusion_size]
+            h_prime: [B, N, embedding_size]
         Returns:
-            Tensor: [N, output_dim] — per-series representation
+            [B, N, output_dim]
         """
-        assert h.shape[0] == h_prime.shape[0], "Number of time series (N) must match."
-        x = torch.cat([h, h_prime], dim=1)              # [N,  diffusion_size[l+1] (h) + embedding_output_size[l] (h_prime)]
-        x = x.unsqueeze(1).transpose(0, 1)              # [1, N, T]
-
-        attn_out, _ = self.attn(x, x, x)                # [1, N, T]
-        attn_out = self.norm(attn_out)                  # [1, N, T]
-
-        x = attn_out.squeeze(0)                         # [N, T]
-        x = self.proj(x)                                # [N, embedding_output_size[l]]
-        return x
+        batch_size, num_nodes = h.size(0), h.size(1)
+        
+        # Concatenate along feature dimension
+        x = torch.cat([h, h_prime], dim=-1)  # [B, N, diffusion_size + embedding_size]
+        
+        # Apply multi-head attention
+        # Note: MultiheadAttention expects [B, N, C] format
+        attn_out, _ = self.multi_head_attn(x, x, x)  # [B, N, input_time]
+        
+        # Project to output dimension
+        out = self.out_proj(attn_out)  # [B, N, output_dim]
+        
+        if self.use_activation:
+            out = F.relu(out)
+            
+        return out

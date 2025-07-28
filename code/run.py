@@ -155,7 +155,8 @@ def main(args: argparse.Namespace) -> None:
         # Train the model
         runner.train(
             train_dataset, validation_dataset, optimizer, criterion, num_epochs,
-            alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes)
+            alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes,
+            batch_size=8)
 
         print("\n" + "="*10 + " TESTING " + "="*10)
         
@@ -197,7 +198,16 @@ def main(args: argparse.Namespace) -> None:
         criterion = nn.BCEWithLogitsLoss()
         num_epochs = train_param['epochs']
 
-        runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, window_size, 5)
+        runner.train(
+            train_dataset, 
+            validation_dataset, 
+            optimizer, 
+            criterion, 
+            num_epochs, 
+            window_size, 
+            5,  # num_features
+            batch_size=16  # Add batch_size parameter
+        )
 
         print("\n" + "="*10 + " TESTING " + "="*10)
         y_pred, y_true = runner.test(test_dataset, window_size, 5)
