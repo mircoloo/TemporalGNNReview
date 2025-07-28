@@ -15,7 +15,7 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 
-from models.HyperStockGAT.training.models.base_models import NCModel 
+from models.HyperStockGAT.models.base_models import NCModel 
 
 # Define optimizer and objective function
 def theta_regularizer(theta):
@@ -44,7 +44,7 @@ def load_model(model_name: str):
             return gwnet
         case "DARNN":
             return DARNN
-        case "HyperStockGAT":
+        case "hyperstockgat":
             return NCModel
         case _:  # default case for any other model name
             raise ValueError(f"Unknown model name: {model_name}")
