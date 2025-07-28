@@ -3,6 +3,8 @@ import torch
 from sklearn.metrics import f1_score, matthews_corrcoef, accuracy_score, mean_absolute_error, mean_squared_error, precision_score, recall_score
 from model_runners.runner_utils import BaseGraphDataset
 from torch_geometric.loader import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+import numpy as np
 
 class DARNNDataset(BaseGraphDataset):
     def __init__(self, dataset):
@@ -40,6 +42,9 @@ class DARNNDataset(BaseGraphDataset):
 
 
 class DARNNRunner(BaseModelRunner):
+    def __init__(self, model, device, market_name):
+        super().__init__(model, device, market_name)
+        self.model_name = "DARNN"
 
     def _convert_data(self, data, seq_length, retrieve_index=None): 
         """
@@ -68,82 +73,86 @@ class DARNNRunner(BaseModelRunner):
         
     
 
-    def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, seq_length):
+    def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, seq_length, batch_size=32):
+        writer = SummaryWriter('runs/')
         train_set = DARNNDataset(train_dataset)
         val_set = DARNNDataset(val_dataset)
+        
+        # Use actual batching
+        train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
-        train_loader = DataLoader(train_set, batch_size=1, shuffle=True)
-        val_loader = DataLoader(val_set, batch_size=1, shuffle=True)
-
-        min_val_loss = float('inf')
-        #print(self.model)
+        best_val_loss = float('inf')
         for epoch in range(num_epochs):
             self.model.train()
             train_loss = 0.0
-            for train_sample in train_loader:
-                # if train_sample.x.shape[-1] != 5 * seq_length:
-                #     print(f"Warning: Skipping sample with incorrect shape: {train_sample.x.shape}")
-                #     continue
+            n_batches = 0
+
+            for batch in train_loader:
+                x_batch, y_batch = batch  # Assuming your dataset returns (x, y)
+                batch_size = x_batch.size(0)
                 
-                drivers, targets, y  = train_sample
-                optimizer.zero_grad()                        
-
-                print(f"{drivers.shape=} {targets.shape=} {y.shape=}")
+                # Move batch to device
+                x_batch = x_batch.to(self.device)
+                y_batch = y_batch.to(self.device)
                 
-                drivers = drivers.permute(0,2,1).to(self.device) # 
-                targets = targets.reshape(1,-1,1).to(self.device) 
-                print(f"{drivers.shape=} {targets.shape=} {y.shape=}")
-
-                outputs = self.model(drivers, targets)
-
-
-                loss = criterion(outputs, y)
+                optimizer.zero_grad()
+                outputs = self.model(x_batch)
+                loss = criterion(outputs, y_batch.float())
                 loss.backward()
                 optimizer.step()
+
                 train_loss += loss.item()
-            # ===== VALIDATION =====
+                n_batches += 1
+
+            avg_train_loss = train_loss / n_batches
+            writer.add_scalar(f'{self.model_name}/{self.market_name}/loss_train', avg_train_loss, epoch)
+
+            # Validation every 5 epochs
             if epoch % 5 == 0:
                 self.model.eval()
                 val_loss = 0.0
+                val_preds = []
+                val_targets = []
+                n_val = 0
+
                 with torch.no_grad():
-                    logits: list = []
-                    y_trues: list = []
-                    for val_sample in val_loader:
-                        if val_sample.x.shape[-1] != 5 * seq_length:
-                            print(f"Warning: Skipping val sample with incorrect shape: {val_sample.x.shape}")
-                            continue
-                        val_sample = val_sample.to(self.device)
-                        for idx in range(len(val_sample.x)):
-                            drivers, targets, y = self._convert_data(val_sample, seq_length, idx)
-                            # drivers: [num_drivers, seq_length], targets: [seq_length], y
-                            drivers = drivers.unsqueeze(0).permute(0, 2, 1).to(self.device)
-                            targets = targets.reshape(1, -1, 1).to(self.device)
-                            y = y.reshape(1, 1).to(self.device)
-                            outputs = self.model(drivers, targets)
-                            loss = criterion(outputs, y)
-                            logits.append(outputs.item())
-                            y_trues.append(y.item())
-                            val_loss += loss.item()
-                            total_nodes_validated_this_epoch += 1
+                    for batch in val_loader:
+                        x_val, y_val = batch
+                        x_val = x_val.to(self.device)
+                        y_val = y_val.to(self.device)
 
-                avg_val_loss = val_loss / max(total_nodes_validated_this_epoch, 1)
-                # Convert raw outputs to binary predictions
-                preds = (torch.sigmoid(torch.tensor(logits)) > 0.5).int()
-                acc = accuracy_score(y_trues, preds)
-                rec = recall_score(y_trues, preds)
-                f1 = f1_score(y_trues, preds, zero_division=0)
-                mcc = matthews_corrcoef(y_trues, preds)
-                print(f"Epoch {epoch+1}/{num_epochs} - Val Loss: {avg_val_loss:.4f} - Acc: {acc:.4f} - Rec: {rec:.4f} - F1: {f1:.4f} - MCC: {mcc:.4f}")
+                        outputs = self.model(x_val)
+                        loss = criterion(outputs, y_val.float())
+                        val_loss += loss.item()
+
+                        # Store predictions and targets
+                        preds = (torch.sigmoid(outputs) > 0.5).int()
+                        val_preds.extend(preds.cpu().numpy())
+                        val_targets.extend(y_val.cpu().numpy())
+                        n_val += 1
+
+                avg_val_loss = val_loss / n_val
+                writer.add_scalar(f'{self.model_name}/{self.market_name}/loss_val', avg_val_loss, epoch)
+
+                # Calculate metrics
+                val_preds = np.array(val_preds)
+                val_targets = np.array(val_targets)
+                
+                acc = accuracy_score(val_targets, val_preds)
+                f1 = f1_score(val_targets, val_preds, zero_division=0)
+                mcc = matthews_corrcoef(val_targets, val_preds)
+
+                print(f'Epoch {epoch}: Train Loss = {avg_train_loss:.4f}, '
+                      f'Val Loss = {avg_val_loss:.4f}, Acc = {acc:.4f}, '
+                      f'F1 = {f1:.4f}, MCC = {mcc:.4f}')
+
                 # Save best model
-                # if avg_val_loss < min_val_loss:
-                #     min_val_loss = avg_val_loss
-                #     best_model_state = self.model.state_dict()
+                if avg_val_loss < best_val_loss:
+                    best_val_loss = avg_val_loss
+                    torch.save(self.model.state_dict(), f'best_model_{self.model_name}_{self.market_name}.pt')
 
-        # Optional: reload best model after training
-        #self.model.load_state_dict(best_model_state)
-
-           
-
+        writer.close()
     def test(self, test_dataset, criterion):
         test_set = DARNNDataset(test_dataset)
         test_loader = DataLoader(test_set, batch_size=1, shuffle=True)
@@ -169,4 +178,3 @@ class DARNNRunner(BaseModelRunner):
 
 
         return y_pred, true_values
-    

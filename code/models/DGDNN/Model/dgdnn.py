@@ -100,44 +100,41 @@ class DGDNN(nn.Module):
     def forward(self, X: torch.Tensor, A: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            X: [N, F_in]  - node features
-            A: [N, N]     - adjacency matrix
-        Returns:
-            logits: [N, classes]
+            X: [B, N, F_in] - batched node features
+            A: [B, N, N] - batched adjacency matrices
         """
-        h = X              # diffused features
-        h_prime = X              # original features for attention fusion
-        theta_soft = F.softmax(self.theta, dim=-1)  # normalize theta to summation of 1 per layer as the regularization
-
-        # --- Layer-wise processing (Generalized Graph Diffusion and Decoupled Representation Learning) ---
-        # This loop implements the core of the DGDNN architecture as shown in Fig. 2 [cite: 111] and Eq. 8.
-        # It combines generalized graph diffusion for topology learning [cite: 101] with decoupled representation learning[cite: 117].
+        batch_size = X.size(0)
+        h = X  # [B, N, F_in]
+        h_prime = self.raw_h_prime(X)  # [B, N, raw_feature_size]
+        
+        # Normalize theta per layer
+        theta_soft = F.softmax(self.theta, dim=-1)
+        
+        # Process each layer
         for l in range(len(self.diffusion_layers) - 1):
-            # 1. Generalized Graph Diffusion Step:
-            # Propagates information on the graph using learned diffusion matrices and weights.
-            # 'theta_soft[l]' are the learned weights (theta_l,k) for the current layer.
-            # 'self.T[l]' are the learned transition matrices (T_l,k) for the current layer.
-            # 'h' is the current diffused feature representation.
-            # 'A' is the static adjacency matrix used to filter the diffused output, as described in GeneralizedGraphDiffusion.
-            h = self.diffusion_layers[l](theta_soft[l], self.T[l], h, A)  # h sized [N, diffusion_size[l+1]]
-            # 2. Hierarchical Decoupled Representation Learning (CatMultiAttn Step):
-            # Combines the *newly diffused* features (h) with the *hierarchical/original* features (h_prime) using attention.
-            # This aims to preserve distinctive local information by decoupling representation transformation and message passing. [cite: 115]
-            if l == 0:
-                # For the first layer, raw features (h_prime) are projected before attention.
-                h_prime = self.cat_attn_layers[l](h, self.raw_h_prime(h_prime))  # [N, embedding_output_size]
-            else:
-                # For subsequent layers, a residual connection is used (h_prime + attention_output).
-                # This helps in preserving hierarchical information across layers. [cite: 37]
-                h_prime = h_prime + self.cat_attn_layers[l](h, h_prime)
-
+            # Expand theta for batch processing
+            theta_l = theta_soft[l].unsqueeze(0).expand(batch_size, -1)  # [B, expansion_step]
             
-
-
-        # --- Final Classification ---
-        # The final 'h_prime' (which holds the refined hierarchical and diffused representations) is passed
-        # through a linear layer to produce the final classification logits for each node (stock). [cite: 43]
-        out = self.linear(h_prime)  # [N, classes]
+            # Apply diffusion to each sample in batch
+            h_list = []
+            for b in range(batch_size):
+                h_b = self.diffusion_layers[l](
+                    theta_l[b],
+                    self.T[l],
+                    h[b],
+                    A[b]
+                )
+                h_list.append(h_b)
+            h = torch.stack(h_list)  # [B, N, diffusion_size[l+1]]
+            
+            # Apply attention
+            if l == 0:
+                h_prime = self.cat_attn_layers[l](h, h_prime)  # [B, N, embedding_size[l]]
+            else:
+                h_prime = h_prime + self.cat_attn_layers[l](h, h_prime)
+    
+        # Final prediction
+        out = self.linear(h_prime)  # [B, N, classes]
         return out
 
 
