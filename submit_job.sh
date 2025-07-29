@@ -28,7 +28,7 @@ cat <<EOF > "$slurm_file"
 #SBATCH --ntasks=1
 #SBATCH --mem=8G
 #SBATCH --time=14-00:00:00
-#SBATCH --gres=gpu
+##SBATCH --gres=gpu
 
 echo "Job started on \$(date)"
 echo "Running on nodes: \${SLURM_NODELIST}"
