@@ -1,0 +1,6 @@
+,up_ratio,up_ratio,up_ratio,up_ratio,num_nodes,num_nodes,num_nodes,num_nodes,num_edges,num_edges,num_edges,num_edges
+,mean,std,min,max,mean,std,min,max,mean,std,min,max
+dataset,,,,,,,,,,,,
+test,0.5101,0.2254,0.0513,0.9376,721.0,0.0,721,721,390759.3487,2263.5414,387274,395476
+train,0.5236,0.2095,0.0624,0.9293,721.0,0.0,721,721,393956.899,2732.0175,388319,400698
+validation,0.5228,0.1795,0.0929,0.8779,721.0,0.0,721,721,389881.3462,1662.9042,386961,393158
