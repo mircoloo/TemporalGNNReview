@@ -3,7 +3,8 @@ import torch
 import json
 from matplotlib import pyplot as plt
 import seaborn as sns
-
+import pandas as pd
+import numpy as np
 
 
 def get_dataset_path() -> Path:
@@ -23,10 +24,27 @@ class MarketAnalyzer():
         self.graph_snapshots = self.load_graph_snapshots() # List of graph snapshots loaded from the dataset directory
         self.load_dataset_info()  # Load dataset information from the directory
         self.load_ticker_maps() # Initialize ticker maps (index to stock and stock to index)
+        self.features = ["Close", "High", "Low", "Open", "Volume"] if num_features == 5 else ["Close"] # hard coded, to change with more features
+        self.analysis_results_path = self.create_folder("analysis_results")  # Create a folder for analysis results
+        
+
+
     def load_ticker_maps(self):
         json_stocks_mapping = json.load(open(self.dataset_path / "ticker_index_mapping.json", "r"))
         self.index_to_stock = {int(k): v for k, v in json_stocks_mapping.items()} # map index to stock ticker 
         self.stock_to_index = {v: int(k) for k, v in json_stocks_mapping.items()} # map stock ticker to index
+
+    def create_folder(self, folder_name: str):
+        """
+        Create a folder in the dataset directory if it does not exist.
+        """
+        folder_path = self.dataset_path / folder_name
+        if not folder_path.exists():
+            folder_path.mkdir(parents=True, exist_ok=True)
+            print(f"Folder {folder_name} created at {self.dataset_path}")
+        else:
+            print(f"Folder {folder_name} already exists at {self.dataset_path}")
+        return folder_path
 
     def load_graph_snapshots(self, convert_x_to_standard_form: bool = True):
         """
@@ -49,7 +67,7 @@ class MarketAnalyzer():
         folder_name = self.dataset_path.name
         folder_name_chunk = folder_name.split("_")
         self.market_name = folder_name_chunk[0]  # e.g., NASDAQ
-        self.time_period = folder_name_chunk[1]  # e.g., Validation
+        self.dataset_type = folder_name_chunk[1]  # e.g., Validation
         self.start_date = folder_name_chunk[2]  # e.g., 2017
         self.end_date = folder_name_chunk[3]  # e.g., 2017  
         self.window_size = int(folder_name_chunk[4])
@@ -70,7 +88,7 @@ class MarketAnalyzer():
         print(f"|{' Dataset Information '.center(content_width)}|")
         print(f"{'=' * (content_width + 4)}")
         print(f"| {'Market Name:':<20} {str(self.market_name):<{content_width-22}} |")
-        print(f"| {'Time Period:':<20} {str(self.time_period):<{content_width-22}} |") 
+        print(f"| {'Time Period:':<20} {str(self.dataset_type):<{content_width-22}} |") 
         print(f"| {'Start Date:':<20} {str(self.start_date):<{content_width-22}} |")
         print(f"| {'End Date:':<20} {str(self.end_date):<{content_width-22}} |")
         print(f"| {'Window Size:':<20} {str(self.window_size):<{content_width-22}} |")
@@ -82,6 +100,48 @@ class MarketAnalyzer():
 
         
 
+    def analyze_node_features(self):
+        """
+        Analyze node features across all snapshots and return a DataFrame.
+
+        """
+        all_features = []
+        for data in self.graph_snapshots:
+            x = data.x  # shape: [num_nodes, time_steps, features] oppure [num_nodes, num_features]
+
+            if x.size(1) < self.window_size:
+                # If the second dimension is smaller than the window size, pad it
+                padding_size = self.window_size - x.size(1)
+                last_timestep = x[:, padding_size, :].unsqueeze(1)  # Get the last timestep
+                x = torch.cat([x, last_timestep], dim=1)
+            if x.dim() == 3:
+                x = x.mean(dim=1)  # media nel tempo se 3D
+            all_features.append(x)
+
+        all_features = torch.cat(all_features, dim=0).numpy()  # [num_snapshots * num_nodes, num_features]
+        df = pd.DataFrame(all_features, columns=self.features)
+        df['ticker'] = [self.index_to_stock[i % self.num_nodes ]  for i in range(len(df))]  # Add ticker column
+        df['snapshot_idx'] = [i // self.num_nodes for i in range(len(df))]  # Add snapshot index column
+        return df
+
+    def get_snapshots_adjacency_matrix(self, snapshot_index: list[int] = None):
+        
+        if snapshot_index is None:
+            snapshot_index = list(range(self.num_snapshots))
+
+        A = np.zeros((self.num_nodes, self.num_nodes), dtype=np.float32)  # Initialize adjacency matrix
+
+        adj_matrixes = []
+
+        for i in snapshot_index:
+            snapshot = self.graph_snapshots[i]
+            edge_index = snapshot.edge_index.numpy()
+            edge_attr = snapshot.edge_attr.numpy() 
+            for edge in range(edge_index.shape[1]):
+                A[edge_index[0][edge], edge_index[1][edge]] = edge_attr[edge]
+            adj_matrixes.append(A.copy())  # Append a copy of the current adjacency matrix
+        print(f"Adjacency matrix shape: {A.shape}")
+        return adj_matrixes
 
     def get_snapshot_info(self, snapshot_index: int):
         snapshot = self.graph_snapshots[snapshot_index] # get the snapshot at the specified index
@@ -103,6 +163,7 @@ class MarketAnalyzer():
         # print(f"Connectivity: {connectivness:.4f}")
 
         snapshot_info = {
+            "snapshot_index": snapshot_index,
             "num_nodes": num_nodes,
             "num_edges": num_edges,
             "up_target": up_target,
@@ -114,6 +175,7 @@ class MarketAnalyzer():
 
         return snapshot_info
     
+
     def get_snapshots_info(self):
         """
         Get information for all snapshots in the dataset.
@@ -122,14 +184,18 @@ class MarketAnalyzer():
         for i in range(self.num_snapshots):
             snapshots_info.append(self.get_snapshot_info(i))
         return snapshots_info
+    
+
+    def get_snapshots_info_df(self) -> pd.DataFrame:
+        return pd.DataFrame(self.get_snapshots_info())
 
 
+    
 
 def main():
-    dataset_path =  get_dataset_path() / "NASDAQ_Train_2016-05-01_2017-06-30_19"
-    analyzer = MarketAnalyzer(dataset_path)
-    snapshots_info = analyzer.get_snapshots_info()  # Analyze the first snapshot
-    print([ snap['up_ratio'] for snap in snapshots_info])  # Print the up ratio for each snapshot
+    pass
+
+    
 
 if __name__ == "__main__":
     main()
