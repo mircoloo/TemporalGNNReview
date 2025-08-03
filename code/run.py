@@ -94,6 +94,7 @@ def main(args: argparse.Namespace) -> None:
     test_sedate = dataset_param['test_sedate']
     window_size = dataset_param['window_size']
     use_fast_approximation = dataset_param['use_fast_approximation']
+    batch_size = train_param.get('batch_size', 1)  # Default to 1 if not specified
     
     # ------------------ 3. LOAD AND PREPARE DATASET ------------------
     company_list = retrieve_company_list(tickers_csv_path)
@@ -102,14 +103,14 @@ def main(args: argparse.Namespace) -> None:
 
     print(f"Original company list length: {len(company_list)}")
     print(f"Filtered company list length: {len(filtered_company_list)}")
-
+    norm_method = 'zscore'
     # Build or retrieve the datasets
     print("-" * 5, "Building train dataset...", "-" * 5)
-    train_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, train_sedate[0], train_sedate[1], window_size, 'Train', use_fast_approximation, normalize_method='log1p')
+    train_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, train_sedate[0], train_sedate[1], window_size, 'Train', use_fast_approximation, normalize_method=norm_method)
     print("-" * 5, "Building validation dataset...", "-" * 5)
-    validation_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, val_sedate[0], val_sedate[1], window_size, 'Validation', use_fast_approximation, normalize_method='log1p')
+    validation_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, val_sedate[0], val_sedate[1], window_size, 'Validation', use_fast_approximation, normalize_method=norm_method)
     print("-" * 5, "Building test dataset...", "-" * 5)
-    test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, test_sedate[0], test_sedate[1], window_size, 'Test', use_fast_approximation, normalize_method='log1p' )
+    test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, test_sedate[0], test_sedate[1], window_size, 'Test', use_fast_approximation, normalize_method=norm_method)
 
     print(train_dataset[0])
 
@@ -155,7 +156,7 @@ def main(args: argparse.Namespace) -> None:
         runner.train(
             train_dataset, validation_dataset, optimizer, criterion, num_epochs,
             alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes,
-            batch_size=32)
+            batch_size=batch_size)
 
         print("\n" + "="*10 + " TESTING " + "="*10)
         
@@ -199,8 +200,8 @@ def main(args: argparse.Namespace) -> None:
         # Training setup
         optimizer = optim.Adam(model_GWN.parameters(), lr=0.001, weight_decay=0.0001)
         criterion = nn.BCEWithLogitsLoss()
-        num_epochs = train_param['epochs']
-        batch_size = 16
+        num_epochs = train_param.get('epochs', 100)  
+        batch_size = batch_size
 
 
         runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, window_size, n_features, batch_size=batch_size)

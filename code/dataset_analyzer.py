@@ -132,6 +132,7 @@ class MarketAnalyzer():
         A = np.zeros((self.num_nodes, self.num_nodes), dtype=np.float32)  # Initialize adjacency matrix
 
         adj_matrixes = []
+        
 
         for i in snapshot_index:
             snapshot = self.graph_snapshots[i]
