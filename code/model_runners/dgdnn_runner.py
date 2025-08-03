@@ -1,12 +1,14 @@
+from pathlib import Path
 from sklearn.metrics import f1_score, matthews_corrcoef, accuracy_score, mean_absolute_error, mean_squared_error, precision_score, recall_score
 from .base_runner import BaseModelRunner
 import torch
 from torch_geometric.utils import to_dense_adj
 from torch_geometric.loader import DataLoader
 from torch.utils.data import DataLoader as TorchDataLoader
-from runner_utils import BaseGraphDataset
+from runner_utils import BaseGraphDataset, SummaryWriter
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.data import Batch
+import pandas as pd
 
 
 
@@ -32,12 +34,13 @@ class DGDNNRunner(BaseModelRunner):
     def __init__(self, model, device, market_name):
         super().__init__(model, device, market_name)
         self.model_name = 'DGDNN'
-    
+        self.run_details = pd.DataFrame()
 
     def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, alpha, 
           neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes, 
           batch_size=32, use_validation=True):
-    
+
+        self.optimizer, self.criterion, self.num_epochs, self.alpha, self.neighbor_distance_regularizer, self.theta_regularizer, self.window_size, self.num_nodes, self.batch_size = optimizer, criterion, num_epochs, alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes, batch_size
         # Create organized TensorBoard writer
         writer = SummaryWriter(f'runs/{self.market_name}/{self.model_name}')
         self.model.train()
@@ -184,10 +187,11 @@ class DGDNNRunner(BaseModelRunner):
                           f"MCC: {val_metrics['mcc']:.4f}")
 
                 self.model.train()
-
+                
+       
         writer.close()
 
-    def test(self, test_dataset, window_size, num_nodes, batch_size=32):
+    def test(self, test_dataset, window_size, num_nodes, batch_size=1):
         test_loader = TorchDataLoader(
             test_dataset, 
             batch_size=batch_size, 
@@ -218,4 +222,11 @@ class DGDNNRunner(BaseModelRunner):
                 all_labels.extend(batch.y.cpu().flatten().tolist())
 
         return all_preds, all_labels
+    
+    def save_run_details(self, log_dir: Path):
+        """
+        Save the run details to a CSV file.
+        """
+        run_details: pd.DataFrame()
+        
 

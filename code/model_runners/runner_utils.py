@@ -1,3 +1,4 @@
+import pandas as pd
 from torch_geometric.data import Dataset, Batch
 import torch
 
@@ -43,4 +44,19 @@ class BaseGraphDataset(Dataset):
         last_values = x[:, -to_cat_dim:]
         x = torch.cat( (x, last_values), dim = 1)
         return x 
+    
+
+
+class SummaryWriter():
+    def __init__(self, df: pd.DataFrame, log_dir: str):
+        """
+        Initialize the SummaryWriter with the given arguments.
+        """
+        self.df = df
+        self.log_dir = log_dir
+        
+        pass
+
+
+
     

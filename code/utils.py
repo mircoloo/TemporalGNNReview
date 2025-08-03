@@ -4,8 +4,6 @@ import os
 import sys
 
 from models.DGDNN.Model.dgdnn import DGDNN
-import models.DGDNN.Model.ggd
-import models.DGDNN.Model.catattn
 from models.GraphWaveNet.gwnet import gwnet
 
 from models.DARNN.DARNN import DARNN
@@ -15,7 +13,6 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 
-from models.HyperStockGAT.models.base_models import NCModel 
 
 # Define optimizer and objective function
 def theta_regularizer(theta):
@@ -44,8 +41,8 @@ def load_model(model_name: str):
             return gwnet
         case "DARNN":
             return DARNN
-        case "hyperstockgat":
-            return NCModel
+        # case "hyperstockgat": to implement later
+        #     return NCModel
         case _:  # default case for any other model name
             raise ValueError(f"Unknown model name: {model_name}")
         
