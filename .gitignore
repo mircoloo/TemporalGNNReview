@@ -4,6 +4,7 @@ token
 *.out
 *.slurm
 *.log
+*.pyc
 #Directories
 code/data/*
 code/tesi_venv/*
@@ -13,4 +14,7 @@ code/models/weights/
 code/logs/
 code/sbatch_outputs
 code/sbatch_scripts
+todo.txt
+logs/
 runs/
+analysys_results/
