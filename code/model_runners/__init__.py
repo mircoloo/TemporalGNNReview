@@ -1,0 +1,4 @@
+
+
+from model_runners.dgdnn_runner import DGDNNRunner
+from model_runners.graphwavenet_runner import GraphWaveNetRunner

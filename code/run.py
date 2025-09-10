@@ -5,11 +5,7 @@ from pathlib import Path
 import os
 from torch.utils.tensorboard import SummaryWriter
 
-# Add the models directory to Python path
-PROJECT_PATH = Path(__file__).parent.resolve()
-
-from model_runners.dgdnn_runner import DGDNNRunner
-from model_runners.graphwavenet_runner import GraphWaveNetRunner
+from model_runners import *
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -24,9 +20,9 @@ torch.manual_seed(42)  # For reproducibility
 # --- Local Imports ---
 from utils.dataset_utils import filter_stocks_from_timeperiod, retrieve_company_list
 from data.geometric_dataset_gen import MyDataset as MyGeometricDataset
-from utils.utils import (neighbor_distance_regularizer,
-                    theta_regularizer, load_model)
+from utils.utils import load_model
 
+PROJECT_PATH = Path(__file__).parent.resolve()
 
 
 
@@ -43,11 +39,12 @@ def main(args: argparse.Namespace) -> None:
     print(f"🚀 Starting process for market: {market_name.upper()}")
 
     # Dynamically load configuration and data paths
-    MARKET_CONFIG_PATH = PROJECT_PATH / f"configs/{market_name}_config.yaml"
-    MODELS_WEIGHTS_PATH = PROJECT_PATH / "models/weights"
+    CONFIG_FILE_PATH = PROJECT_PATH / "configs" / "main_config.yaml"
+    MARKET_CONFIG__FILE_PATH = PROJECT_PATH / f"configs/{market_name}_config.yaml"
+    MODELS_WEIGHTS_DIR_PATH = PROJECT_PATH / "models/weights"
     
     # Create weights directory if it doesn't exist
-    MODELS_WEIGHTS_PATH.mkdir(parents=True, exist_ok=True)
+    MODELS_WEIGHTS_DIR_PATH.mkdir(parents=True, exist_ok=True)
     
     # Assuming data is in a fixed relative location
     hist_price_stocks_path = PROJECT_PATH / f"data/datasets/hist_prices/{market_name.upper()}"
@@ -56,16 +53,18 @@ def main(args: argparse.Namespace) -> None:
 
     # Load market-specific configuration file
     try:
-        with open(MARKET_CONFIG_PATH, 'r') as f:
+        with open(MARKET_CONFIG__FILE_PATH, 'r') as f:
             config_yaml = yaml.safe_load(f)
+        with open(CONFIG_FILE_PATH, 'r') as config_file:
+            main_config_yaml = yaml.safe_load(config_file)
     except FileNotFoundError:
-        print(f"❌ Error: Configuration file not found at {MARKET_CONFIG_PATH}")
+        print(f"❌ Error: Configuration file not found at {MARKET_CONFIG__FILE_PATH}")
         sys.exit(1)
     except Exception as e:
         print(f"❌ Error parsing YAML config: {repr(e)}")
         sys.exit(1)
 
-    # ------------------ 2. ASSIGN VARIABLES FROM CONFIG ------------------
+    # ------------------ 2. ASSIGN VARIABLES FROM DATASET CONFIG ------------------
     dataset_param = config_yaml['dataset_params']
     model_param = config_yaml['model_params']
     train_param = config_yaml['training_params']
@@ -80,12 +79,15 @@ def main(args: argparse.Namespace) -> None:
     
     # ------------------ 3. LOAD AND PREPARE DATASET ------------------
     company_list = retrieve_company_list(tickers_csv_path)
+    # Retrieve the time period 
     total_time_period = [min(train_sedate + val_sedate + test_sedate), max(train_sedate + val_sedate + test_sedate)]
+    
+    # Filters only the company which respects the time period
     filtered_company_list = filter_stocks_from_timeperiod(company_list, market, total_time_period, hist_price_stocks_path)
 
     print(f"Original company list length: {len(company_list)}")
     print(f"Filtered company list length: {len(filtered_company_list)}")
-    norm_method = None
+    norm_method = 'zscore'
     # Build or retrieve the datasets
     print("-" * 5, "Building train dataset...", "-" * 5)
     train_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, train_sedate[0], train_sedate[1], window_size, 'Train', use_fast_approximation, normalize_method=norm_method)
@@ -94,21 +96,20 @@ def main(args: argparse.Namespace) -> None:
     print("-" * 5, "Building test dataset...", "-" * 5)
     test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, test_sedate[0], test_sedate[1], window_size, 'Test', use_fast_approximation, normalize_method=norm_method)
 
-    print(train_dataset[0])
-
-
     num_nodes =len(filtered_company_list)
-    n_features = 5 # Set the number of features
+    features = main_config_yaml["features"]
+    print(f"{features=}")
+    n_features = len(features)
     print(f"Number of nodes (stocks): {num_nodes} {train_dataset[0].x.shape=}")
 
     # ------------------ 4. BUILD THE MODEL FROM CONFIG PARAMS ------------------
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Using device: {device}")
     
-    
     # ------------------ 5. TRAIN AND TEST THE MODEL USING THE RUNNER ------------------s
+    #model_orchestrator( args.model, model_param )
     if args.model == 'dgdnn':
-        print("DGDNN model selected. Running training and evaluation pipeline.")
+        print("GraphWaveNet model selected. Running training and evaluation pipeline.")
         DGDNN = load_model('DGDNN')
         model_param = model_param['DGDNN']
         model_DGDNN = DGDNN(
@@ -126,24 +127,32 @@ def main(args: argparse.Namespace) -> None:
         ).to(device)
     
         print(f"Model parameters: {sum([p.numel() for p in model_DGDNN.parameters()]):,}")
+        
         runner = DGDNNRunner(model_DGDNN, device, market_name)
 
         # build the optimizer & criterion
         optimizer = optim.Adam(model_DGDNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
         criterion = nn.BCEWithLogitsLoss()
+        
         num_epochs = train_param['epochs']
+        
         alpha = train_param.get('neighbour_radius_coeff', 0.0)
 
         # Train the model
         runner.train(
-            train_dataset, validation_dataset, optimizer, criterion, num_epochs,
-            alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes,
+            train_dataset, 
+            validation_dataset, 
+            optimizer, 
+            criterion, 
+            num_epochs,
+            alpha, 
+            window_size, 
+            num_nodes,
             batch_size=batch_size)
-
-        print("\n" + "="*10 + " TESTING " + "="*10)
-        
-        # Test the model
-        y_pred, y_true = runner.test(test_dataset, window_size, num_nodes)
+            
+        y_pred, y_true = runner.test(test_dataset, 
+                                     window_size, 
+                                     num_nodes)
 
 
         
