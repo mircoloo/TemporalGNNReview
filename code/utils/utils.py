@@ -5,7 +5,6 @@ import sys
 
 from models.DGDNN.Model.dgdnn import DGDNN
 from models.GraphWaveNet.gwnet import gwnet
-
 from models.DARNN.DARNN import DARNN
 #from models.HyperStockGAT.training.models.base_models import NCModel
 from pathlib import Path
@@ -47,43 +46,6 @@ def load_model(model_name: str):
             raise ValueError(f"Unknown model name: {model_name}")
         
     
-def log_test_results(filename: Path | str, path_to_log: str | Path, **kwargs):
-    path_to_log = Path(path_to_log) 
-    if not path_to_log.exists():
-        print(f"Folder {path_to_log} does not exists...")
-        raise FileNotFoundError
-    filepath = path_to_log / Path(filename)
-    with open(filepath, 'a+') as f:
-        for key,value in kwargs.items():
-            f.write(f"{key}={value}\n")
-    f.write("=======================\n")
-
-def process_test_results(y_hat, y_true):
-    """
-    Print and return evaluation metrics for test results (binary classification).
-    """
-    # Convert raw outputs to binary predictions
-    
-
-    acc = accuracy_score(y_true, y_hat)
-    precision = precision_score(y_true, y_hat, zero_division=0)
-    recall = recall_score(y_true, y_hat, zero_division=0)
-    f1 = f1_score(y_true, y_hat, zero_division=0)
-    mcc = matthews_corrcoef(y_true, y_hat)
-
-    print(f"Test Accuracy: {acc:.4f}")
-    print(f"Test Precision: {precision:.4f}")
-    print(f"Test Recall: {recall:.4f}")
-    print(f"Test F1 Score: {f1:.4f}")
-    print(f"Test MCC: {mcc:.4f}")
-
-    return {
-        "accuracy": acc,
-        "precision": precision,
-        "recall": recall,
-        "f1_score": f1,
-        "mcc": mcc
-    }
 
 
 

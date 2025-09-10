@@ -33,18 +33,10 @@ torch.manual_seed(42)  # For reproducibility
 # --- Local Imports ---
 # Ensure these paths are correct relative to your project structure.
 # You might need to adjust them if your project layout is different.
-try:
-    from dataset_utils import filter_stocks_from_timeperiod, retrieve_company_list
-    from data.geometric_dataset_gen import MyDataset as MyGeometricDataset
-    from utils import (neighbor_distance_regularizer,
-                       theta_regularizer, load_model, process_test_results)
-except ImportError as e:
-    print(f"Error importing local modules in run.py: {repr(e)}")
-    print("Please ensure your Python path is set up correctly and the necessary files exist.")
-except Exception as e:
-    print(f"Exiting due to import error: {repr(e)}")
-
-    sys.exit(1)
+from utils.dataset_utils import filter_stocks_from_timeperiod, retrieve_company_list
+from data.geometric_dataset_gen import MyDataset as MyGeometricDataset
+from utils.utils import (neighbor_distance_regularizer,
+                    theta_regularizer, load_model)
 
 
 
@@ -163,8 +155,6 @@ def main(args: argparse.Namespace) -> None:
         # Test the model
         y_pred, y_true = runner.test(test_dataset, window_size, num_nodes)
 
-        # Test the results 
-        process_test_results(y_pred, y_true)
 
         
     elif args.model == 'graphwavenet':
@@ -209,7 +199,6 @@ def main(args: argparse.Namespace) -> None:
 
         print("\n" + "="*10 + " TESTING " + "="*10)
         y_pred, y_true = runner.test(test_dataset, window_size, n_features, batch_size=batch_size, config=model_config)
-        process_test_results(y_pred, y_true)
     elif args.model == 'darnn':
         from model_runners.darnn_runner import DARNNRunner
         DARNN = load_model('DARNN')
@@ -227,7 +216,6 @@ def main(args: argparse.Namespace) -> None:
         criterion = nn.BCEWithLogitsLoss()
         runner.train(train_dataset, validation_dataset, optimizer, criterion, train_param['epochs'], seq_length=window_size)
         y_pred, y_true = runner.test(test_dataset, seq_length=window_size, num_features=5)
-        process_test_results(y_pred, y_true)   
 
     elif args.model == 'hyperstockgat':
         from model_runners.hyperstockgraph_runner import HyperStockGraphRunner
