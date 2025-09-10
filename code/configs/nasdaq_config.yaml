@@ -34,15 +34,8 @@ model_params:
     diffusion_size: [95, 128, 256, 512, 256, 128, 128, 128, 128]
 
     # Length must be layers = 8. Values are calculated input dimensions for each attention layer.
-    embedding_size:
-      - 224  
-      - 384  # 384 / 3 = 128
-      - 640  # 639 / 3 = 213
-      - 384  # 384 / 3 = 128
-      - 256  # 255 / 3 = 85
-      - 256
-      - 256
-      - 256
+    embedding_size: [224, 384, 640, 384, 256, 256, 256, 256]
+
   GraphWaveNet:
     layers: 5
 # -----------------------------------------------------------------

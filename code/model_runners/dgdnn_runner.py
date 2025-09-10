@@ -1,11 +1,7 @@
 from pathlib import Path
-from sklearn.metrics import f1_score, matthews_corrcoef, accuracy_score, mean_absolute_error, mean_squared_error, precision_score, recall_score
-from .base_runner import BaseModelRunner
+from model_runners.base_runner import *
 import torch
 from torch_geometric.utils import to_dense_adj
-from torch_geometric.loader import DataLoader
-from torch.utils.data import DataLoader as TorchDataLoader
-from torch_geometric.data import Batch
 import pandas as pd
 
 
@@ -32,21 +28,26 @@ class DGDNNRunner(BaseModelRunner):
     def __init__(self, model, device, market_name):
         super().__init__(model, device, market_name)
         self.model_name = 'DGDNN'
-        self.run_details = pd.DataFrame()
 
-    def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, alpha, 
-          neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes, 
-          batch_size=32, use_validation=True):
+    def train(self, train_dataset, 
+              val_dataset, 
+              optimizer, 
+              criterion, 
+              num_epochs, 
+              alpha, 
+              window_size, num_nodes, 
+              batch_size=32, 
+              use_validation=True):
 
-        self.optimizer, self.criterion, self.num_epochs, self.alpha, self.neighbor_distance_regularizer, self.theta_regularizer, self.window_size, self.num_nodes, self.batch_size = optimizer, criterion, num_epochs, alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes, batch_size
-        # Create organized TensorBoard writer
-        self.model.train()
+        self.optimizer, \
+        self.criterion, \
+        self.num_epochs, \
+        self.alpha, \
+        self.window_size, \
+        self.num_nodes, \
+        self.batch_size = optimizer, criterion, num_epochs, alpha, window_size, num_nodes, batch_size
         
-        # Custom collate function to handle different sizes
         
-        
-        # Use actual batching with custom collate
-        # Use actual batching with custom collate
         train_loader = TorchDataLoader(
             train_dataset, 
             batch_size=batch_size, 
@@ -62,7 +63,7 @@ class DGDNNRunner(BaseModelRunner):
             drop_last=False,
             collate_fn=custom_collate_fn
         )
-
+        
         # Update training loop to handle None batches
         for epoch in range(num_epochs + 1):
             train_loss = 0.0
@@ -72,39 +73,35 @@ class DGDNNRunner(BaseModelRunner):
             for batch in train_loader:
                 if batch is None:
                     continue
-                    
                 batch = batch.to(self.device)
-                optimizer.zero_grad()
-                
-                # Handle batched data
-                X = batch.x.view(-1, num_nodes, batch.x.size(-1))  # [B, N, F]
+                number_of_features = batch.x.size(-1)
+
+                X = batch.x.view(-1, num_nodes, number_of_features)  # [B, N, F]
                 A = to_dense_adj(
                     batch.edge_index, 
                     batch=batch.batch,
                     edge_attr=batch.edge_attr,
                     max_num_nodes=num_nodes
                 )
-                
+                optimizer.zero_grad()
                 # Forward pass with batched inputs
                 outputs = self.model(X, A)  # [B, N, 1]
                 targets = batch.y.view(-1, num_nodes, 1).float()  # [B, N, 1]
-                
                 # Compute loss
-                loss = criterion(outputs, targets)
+                train_loss = criterion(outputs, targets)
                 if alpha > 0:
-                    loss = loss + alpha * neighbor_distance_regularizer(self.model.theta) \
+                    train_loss = train_loss + alpha * neighbor_distance_regularizer(self.model.theta) \
                           + theta_regularizer(self.model.theta)
                 
-                loss.backward()
+                train_loss.backward()
                 optimizer.step()
                 
-                train_loss += loss.item()
+                train_loss += train_loss.item()
                 n_train += 1
 
             # Training metrics
             avg_train_loss = train_loss / n_train
                 
-
             # Validation loop
             if use_validation and (epoch % 1 == 0):
                 self.model.eval()
@@ -115,10 +112,7 @@ class DGDNNRunner(BaseModelRunner):
                 n_val = 0
                 
                 with torch.no_grad():
-                    for batch in val_loader:
-                        if batch.x.shape[-1] != 5 * window_size:
-                            continue
-                            
+                    for batch in val_loader:                            
                         batch = batch.to(self.device)
                         X = batch.x.view(-1, num_nodes, 5 * window_size)
                         A = to_dense_adj(batch.edge_index, 
@@ -166,7 +160,8 @@ class DGDNNRunner(BaseModelRunner):
 
                 self.model.train()
                 
-
+    
+    
 
     def test(self, test_dataset, window_size, num_nodes, batch_size=1):
         test_loader = TorchDataLoader(
@@ -200,4 +195,24 @@ class DGDNNRunner(BaseModelRunner):
 
         return all_preds, all_labels
 
+
+
+
+
+# Define optimizer and objective function
+def theta_regularizer(theta):
+    row_sums = torch.sum(theta, dim=-1)
+    ones = torch.ones_like(row_sums)
+    return torch.sum(torch.abs(row_sums - ones))
+
+def neighbor_distance_regularizer(theta):
+    box = torch.sum(theta, dim=-1)
+    result = torch.zeros_like(theta)
+
+    for idx, row in enumerate(theta):
+        for i, j in enumerate(row):
+            result[idx, i] = i * j
+
+    result_sum = torch.sum(result, dim=1)
+    return torch.sum(result / result_sum[:, None])
 

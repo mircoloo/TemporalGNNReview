@@ -34,74 +34,16 @@ class GraphWaveNetRunner(BaseModelRunner):
         super().__init__(model, device, market_name)
         self.model_name = "GWNet"
         
-    def log_experiment(self, config, dataset_info, train_params, test_metrics, log_dir='logs'):
-        """
-        Log experiment configuration and results
         
-        Args:
-            config (dict): Model configuration parameters
-            dataset_info (dict): Dataset information
-            train_params (dict): Training hyperparameters
-            test_metrics (dict): Test results metrics
-            log_dir (str): Directory to save logs
-        """
-        import json
-        from pathlib import Path
-        from datetime import datetime
-        
-        # Create logs directory if it doesn't exist
-        log_path = Path(log_dir) / self.market_name / self.model_name
-        log_path.mkdir(parents=True, exist_ok=True)
-        
-        # Prepare experiment info
-        experiment_info = {
-            'timestamp': datetime.now().strftime('%Y-%m-%d_%H-%M-%S'),
-            'model': {
-                'name': self.model_name,
-                'num_parameters': sum(p.numel() for p in self.model.parameters()),
-                'config': config
-            },
-            'dataset': dataset_info,
-            'training': train_params,
-            'test_results': test_metrics,
-            'device': str(self.device)
-        }
-        
-        # Save to JSON file
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"{self.market_name}_{self.model_name}_{timestamp}.json"
-        with open(log_path / filename, 'w') as f:
-            json.dump(experiment_info, indent=4, default=str)
-            
-        print(f"📄 Experiment logged to: {log_path / filename}")
-        
-        # Also save a summary to a CSV for easy comparison
-        import pandas as pd
-        summary_file = log_path / 'experiments_summary.csv'
-        summary = {
-            'timestamp': [experiment_info['timestamp']],
-            'market': [self.market_name],
-            'model': [self.model_name],
-            'num_parameters': [experiment_info['model']['num_parameters']],
-            'epochs': [train_params['num_epochs']],
-            'batch_size': [train_params['batch_size']],
-            'learning_rate': [train_params['learning_rate']],
-            'test_accuracy': [test_metrics['accuracy']],
-            'test_f1': [test_metrics['f1']],
-            'test_precision': [test_metrics['precision']],
-            'test_recall': [test_metrics['recall']],
-            'test_mcc': [test_metrics['mcc']]
-        }
-        
-        df = pd.DataFrame(summary)
-        if summary_file.exists():
-            df_existing = pd.read_csv(summary_file)
-            df = pd.concat([df_existing, df], ignore_index=True)
-        df.to_csv(summary_file, index=False)
-        
-    def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, seq_length, num_features, batch_size=32):
+    def train(self, train_dataset, 
+              val_dataset, 
+              optimizer, 
+              criterion, 
+              num_epochs, 
+              seq_length, 
+              num_features, 
+              batch_size=32):
         # Create organized TensorBoard writer
-        writer = SummaryWriter(f'runs/{self.market_name}/{self.model_name}')
         train_set = GraphWaveNetDataset(train_dataset)
         val_set = GraphWaveNetDataset(val_dataset)
         
@@ -137,8 +79,6 @@ class GraphWaveNetRunner(BaseModelRunner):
 
             # Training metrics
             avg_train_loss = train_loss / n_train
-            writer.add_scalar('Training/Loss', avg_train_loss, epoch)
-
             # Validation every 5 epochs
             if epoch % 5 == 0:
                 self.model.eval()
@@ -187,16 +127,7 @@ class GraphWaveNetRunner(BaseModelRunner):
                     val_metrics['mcc'] = matthews_corrcoef(y_true.flatten(), y_pred.flatten())
                     val_metrics['loss'] /= n_val
 
-                    # Log metrics in organized sections
-                    writer.add_scalar('Validation/Loss', val_metrics['loss'], epoch)
-                    writer.add_scalar('Validation/Accuracy', val_metrics['acc'], epoch)
-                    writer.add_scalar('Validation/Precision', val_metrics['prec'], epoch)
-                    writer.add_scalar('Validation/Recall', val_metrics['rec'], epoch)
-                    writer.add_scalar('Validation/F1', val_metrics['f1'], epoch)
-                    writer.add_scalar('Validation/MCC', val_metrics['mcc'], epoch)
-
                     # Add histogram of predictions
-                    writer.add_histogram('Predictions/Validation', y_pred, epoch)
 
                     print(f"Epoch {epoch+1}/{num_epochs} - "
                           f"Train Loss: {avg_train_loss:.4f} - "

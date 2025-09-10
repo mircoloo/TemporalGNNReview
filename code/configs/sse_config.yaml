@@ -66,4 +66,4 @@ training_params:
   weight_decay: 1.5e-5     # From paper: 1.5e-5
   epochs: 300               # From paper
   neighbour_radius_coeff: 8.6e-3  # From paper: α = 2.9e-3
-  batch_size: 16
+  batch_size: 8

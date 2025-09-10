@@ -1,0 +1,9 @@
+# dataset csv, dove salvare dataset creato con geometric_dataset_gen.py, do
+# dove trovare i modelli 
+# dove salvare i log
+features:
+  - Close
+  - High
+  - Low
+  - Open
+  - Volume
