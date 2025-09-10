@@ -3,7 +3,7 @@ import torch
 import os
 import sys
 
-from models.DGDNN.Model.dgdnn import DGDNN
+from models.DGDNN.dgdnn import DGDNN
 from models.GraphWaveNet.gwnet import gwnet
 from models.DARNN.DARNN import DARNN
 #from models.HyperStockGAT.training.models.base_models import NCModel
