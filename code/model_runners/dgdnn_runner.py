@@ -5,7 +5,6 @@ import torch
 from torch_geometric.utils import to_dense_adj
 from torch_geometric.loader import DataLoader
 from torch.utils.data import DataLoader as TorchDataLoader
-from runner_utils import BaseGraphDataset, SummaryWriter
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.data import Batch
 import pandas as pd
