@@ -5,7 +5,6 @@ import torch
 from torch_geometric.utils import to_dense_adj
 from torch_geometric.loader import DataLoader
 from torch.utils.data import DataLoader as TorchDataLoader
-from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.data import Batch
 import pandas as pd
 
@@ -41,7 +40,6 @@ class DGDNNRunner(BaseModelRunner):
 
         self.optimizer, self.criterion, self.num_epochs, self.alpha, self.neighbor_distance_regularizer, self.theta_regularizer, self.window_size, self.num_nodes, self.batch_size = optimizer, criterion, num_epochs, alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes, batch_size
         # Create organized TensorBoard writer
-        writer = SummaryWriter(f'runs/{self.market_name}/{self.model_name}')
         self.model.train()
         
         # Custom collate function to handle different sizes
@@ -105,14 +103,7 @@ class DGDNNRunner(BaseModelRunner):
 
             # Training metrics
             avg_train_loss = train_loss / n_train
-            writer.add_scalar('Training/Loss', avg_train_loss, epoch)
-            
-            # Add regularization terms separately
-            if alpha > 0:
-                writer.add_scalar('Training/Neighbor_Distance_Reg', 
-                                neighbor_distance_regularizer(self.model.theta), epoch)
-                writer.add_scalar('Training/Theta_Reg', 
-                                theta_regularizer(self.model.theta), epoch)
+                
 
             # Validation loop
             if use_validation and (epoch % 1 == 0):
@@ -164,18 +155,6 @@ class DGDNNRunner(BaseModelRunner):
                     for k in val_metrics:
                         val_metrics[k] /= n_val
                     
-                    # Log metrics in organized sections
-                    writer.add_scalar('Validation/Loss', val_metrics['loss'], epoch)
-                    writer.add_scalar('Validation/Accuracy', val_metrics['acc'], epoch)
-                    writer.add_scalar('Validation/Precision', val_metrics['prec'], epoch)
-                    writer.add_scalar('Validation/Recall', val_metrics['rec'], epoch)
-                    writer.add_scalar('Validation/F1', val_metrics['f1'], epoch)
-                    writer.add_scalar('Validation/MCC', val_metrics['mcc'], epoch)
-
-                    # Add model parameter distributions
-                    for name, param in self.model.named_parameters():
-                        writer.add_histogram(f'Parameters/{name}', param, epoch)
-
                     print(f"Epoch {epoch+1}/{num_epochs} - "
                           f"Train Loss: {avg_train_loss:.4f} - "
                           f"Val Loss: {val_metrics['loss']:.4f} - "
@@ -187,8 +166,7 @@ class DGDNNRunner(BaseModelRunner):
 
                 self.model.train()
                 
-       
-        writer.close()
+
 
     def test(self, test_dataset, window_size, num_nodes, batch_size=1):
         test_loader = TorchDataLoader(
@@ -221,11 +199,5 @@ class DGDNNRunner(BaseModelRunner):
                 all_labels.extend(batch.y.cpu().flatten().tolist())
 
         return all_preds, all_labels
-    
-    def save_run_details(self, log_dir: Path):
-        """
-        Save the run details to a CSV file.
-        """
-        run_details: pd.DataFrame()
-        
+
 
