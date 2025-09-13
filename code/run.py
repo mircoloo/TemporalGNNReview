@@ -188,12 +188,12 @@ def main(args: argparse.Namespace) -> None:
 
         # Training setup
         optimizer = optim.Adam(model_GWN.parameters(), lr=0.001, weight_decay=0.0001)
-        criterion = nn.BCEWithLogitsLoss()
+        criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([.8]).to(device))
         num_epochs = train_param.get('epochs', 100)  
         batch_size = batch_size
 
 
-        runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, window_size, n_features, batch_size=batch_size)
+        runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, window_size, n_features, batch_size=batch_size, threshold=.7)
         print("✅ Training finished.")
 
         print("\n" + "="*10 + " TESTING " + "="*10)

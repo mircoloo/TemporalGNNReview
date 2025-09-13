@@ -92,7 +92,7 @@ class gwnet(nn.Module):
 
         # Initial 1x1 convolution to project input features to residual_channels
         self.start_conv = nn.Conv2d(in_channels=in_dim, out_channels=residual_channels, kernel_size=(1, 1))
-        
+        print(self, device, num_nodes, dropout, supports, gcn_bool, addaptadj, aptinit, in_dim, out_dim, residual_channels, dilation_channels, skip_channels, end_channels, kernel_size, blocks, layers)
         self.supports = supports # Pre-defined adjacency matrices (if any)
         receptive_field = 1 # Tracks the total receptive field of temporal convolutions
         self.supports_len = 0 # Number of support matrices
@@ -143,6 +143,7 @@ class gwnet(nn.Module):
         self.receptive_field = receptive_field # Total effective receptive field of the network
 
     def forward(self, input):
+        #print(f"{input.shape=}" )
         in_len = input.size(3) # Get input sequence length (time dimension)
         # Pad input if its length is less than the network's receptive field
         if in_len < self.receptive_field:
@@ -152,7 +153,7 @@ class gwnet(nn.Module):
         
         # Initial transformation of input features
         x = self.start_conv(x) 
-        
+        #print(f"{x.shape=} after start conv (should remain the same)")
         skip = 0 # Initialize skip connection accumulation
         new_supports = None # Placeholder for combined support matrices
         
@@ -175,7 +176,9 @@ class gwnet(nn.Module):
             
             gate = self.gate_convs[i](residual) # Gate path convolution
             gate = torch.sigmoid(gate) # Apply sigmoid activation
-            
+
+            #print(f"{filter.shape=} {gate.shape=}")
+
             x = filter * gate # Gating mechanism: element-wise product of filter and gate outputs
                                # This acts as a temporal attention mechanism
 
