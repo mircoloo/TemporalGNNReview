@@ -42,7 +42,6 @@ class HyperStockGraphRunner(BaseModelRunner):
               epochs: int, 
               seq_length: int, 
               num_features: int):
-        writer = SummaryWriter(f'runs/{self.market_name}/{self.model_name}')
         # Convert to HyperStockGraphDataset
         train_set = HyperStockGraphDataset(train_dataset)
         validation_set = HyperStockGraphDataset(validation_dataset)
@@ -56,7 +55,6 @@ class HyperStockGraphRunner(BaseModelRunner):
             total_samples = 0
             for batch in train_loader:
                 x, y, adj = batch
-                
                 y = y.squeeze(0) # remove the batch dimension
                 #x, y, adj = self._convert_data(batch, seq_length, num_features, batch.x.shape[0])
                 x, y, adj = x.to(self.device), y.to(self.device), adj.to(self.device)

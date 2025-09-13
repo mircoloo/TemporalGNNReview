@@ -1,4 +1,5 @@
 #Files
+diario_di_bordo
 token
 *.err
 *.out
@@ -18,3 +19,4 @@ todo.txt
 logs/
 runs/
 analysys_results/
+

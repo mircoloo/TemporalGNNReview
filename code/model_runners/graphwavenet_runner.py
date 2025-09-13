@@ -2,9 +2,7 @@ from model_runners.runner_utils import BaseGraphDataset
 from model_runners.base_runner import BaseModelRunner
 import torch
 from torch_geometric.loader import DataLoader
-from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, precision_score, recall_score
-from torch_geometric.utils import to_dense_adj
-from torch.utils.tensorboard import SummaryWriter
+from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, precision_score, recall_score 
 
 
 class GraphWaveNetDataset(BaseGraphDataset):
@@ -42,11 +40,11 @@ class GraphWaveNetRunner(BaseModelRunner):
               num_epochs, 
               seq_length, 
               num_features, 
-              batch_size=32):
+              batch_size=32,
+              threshold=0.5):
         # Create organized TensorBoard writer
         train_set = GraphWaveNetDataset(train_dataset)
         val_set = GraphWaveNetDataset(val_dataset)
-        
         # Use actual batching
         train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(val_set, batch_size=batch_size)
@@ -109,7 +107,7 @@ class GraphWaveNetRunner(BaseModelRunner):
                         val_metrics['loss'] += loss.item()
 
                         # Store predictions and targets
-                        preds = (torch.sigmoid(predict) > 0.5).int()
+                        preds = (torch.sigmoid(predict) > threshold).int()
                         val_preds.append(preds.cpu())
                         val_targets.append(real.cpu())
                         n_val += 1
@@ -138,7 +136,6 @@ class GraphWaveNetRunner(BaseModelRunner):
                           f"F1: {val_metrics['f1']:.4f} - "
                           f"MCC: {val_metrics['mcc']:.4f}")
 
-        writer.close()
 
     def test(self, test_dataset, seq_length, num_features, batch_size=32, config=None):
         test_set = GraphWaveNetDataset(test_dataset)
@@ -158,7 +155,7 @@ class GraphWaveNetRunner(BaseModelRunner):
                 output_for_loss = output[:, :, :, -1]
                 predict = output_for_loss.squeeze(1)
                 
-                preds = (torch.sigmoid(predict) > 0.5).int()
+                preds = (torch.sigmoid(predict) > self.threshold).int()
                 all_preds.append(preds.cpu())
                 all_targets.append(y.cpu())
 
