@@ -3,25 +3,10 @@ from model_runners.base_runner import *
 import torch
 from torch_geometric.utils import to_dense_adj
 import pandas as pd
-
-
-
-def custom_collate_fn(data_list):
-            # Check if all tensors have the same dimensions
-            if len(data_list) == 0:
-                return Batch()
-            # Handle variable feature dimensions by padding
-            max_node_features = max([data.x.size(1) if data.x is not None else 0 for data in data_list])
-            
-            for data in data_list:
-                if data.x is not None and data.x.size(1) < max_node_features:
-                    # Pad with zeros
-                    print("Found one tensor with less features, padding it from ", data.x.size(1), "to", max_node_features  )
-                    padding = data.x[:, - (max_node_features - data.x.size(1)):]
-                    data.x = torch.cat([data.x, padding], dim=1)
-
-            return Batch.from_data_list(data_list)
-
+from tqdm.auto import tqdm
+from tabulate import tabulate
+from model_runners.base_runner import evaluate_decorator, BaseModelRunner
+from model_runners.models_dataset import DGDNNDataset
 
 class DGDNNRunner(BaseModelRunner):
 
@@ -48,21 +33,12 @@ class DGDNNRunner(BaseModelRunner):
         self.batch_size = optimizer, criterion, num_epochs, alpha, window_size, num_nodes, batch_size
         
         
-        train_loader = TorchDataLoader(
-            train_dataset, 
-            batch_size=batch_size, 
-            shuffle=True, 
-            drop_last=True,
-            collate_fn=custom_collate_fn
-        )
-
-        val_loader = TorchDataLoader(
-            val_dataset, 
-            batch_size=batch_size, 
-            shuffle=False,
-            drop_last=False,
-            collate_fn=custom_collate_fn
-        )
+        # Create organized TensorBoard writer
+        train_set = DGDNNDataset(train_dataset)
+        val_set = DGDNNDataset(val_dataset)
+        # Use actual batching
+        train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=batch_size)
         
         # Update training loop to handle None batches
         for epoch in range(num_epochs + 1):
@@ -149,28 +125,31 @@ class DGDNNRunner(BaseModelRunner):
                     for k in val_metrics:
                         val_metrics[k] /= n_val
                     
-                    print(f"Epoch {epoch+1}/{num_epochs} - "
-                          f"Train Loss: {avg_train_loss:.4f} - "
-                          f"Val Loss: {val_metrics['loss']:.4f} - "
-                          f"Acc: {val_metrics['acc']:.4f} - "
-                          f"Prec: {val_metrics['prec']:.4f} - "
-                          f"Rec: {val_metrics['rec']:.4f} - "
-                          f"F1: {val_metrics['f1']:.4f} - "
-                          f"MCC: {val_metrics['mcc']:.4f}")
+                    # Print results in a table format
+                    if epoch % 5 == 0 or epoch == num_epochs:
+                        headers = ["Metric", "Value"]
+                        table_data = [
+                            ["Train Loss", f"{avg_train_loss:.4f}"],
+                            ["Val Loss", f"{val_metrics['loss']:.4f}"],
+                            ["Accuracy", f"{val_metrics['acc']:.4f}"],
+                            ["Precision", f"{val_metrics['prec']:.4f}"],
+                            ["Recall", f"{val_metrics['rec']:.4f}"],
+                            ["F1 Score", f"{val_metrics['f1']:.4f}"],
+                            ["MCC", f"{val_metrics['mcc']:.4f}"]
+                        ]
+                        
+                        print(f"\nEpoch {epoch+1}/{num_epochs} Results:")
+                        print(tabulate(table_data, headers=headers, tablefmt="pretty"))
+                        print("\n")
 
                 self.model.train()
                 
     
     
-
+    @evaluate_decorator
     def test(self, test_dataset, window_size, num_nodes, batch_size=1):
-        test_loader = TorchDataLoader(
-            test_dataset, 
-            batch_size=batch_size, 
-            shuffle=True, 
-            drop_last=True,
-            collate_fn=custom_collate_fn
-        )
+        test_dataset = DGDNNDataset(test_dataset)  
+        test_loader = DataLoader(test_dataset, batch_size=batch_size)
 
         self.model.eval()
         all_preds = []

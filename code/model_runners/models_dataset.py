@@ -1,12 +1,21 @@
 from model_runners.runner_utils import BaseGraphDataset
+from torch_geometric.utils import to_dense_adj
+import torch
 
 class DGDNNDataset(BaseGraphDataset):
     def __init__(self, dataset):
         # Data(x=[1171, 110], edge_index=[2, 1369852], edge_attr=[1369852], y=[1171])
         super().__init__(dataset)
     def __getitem__(self, idx):
-        return self.dataset[idx]
-
+        print(self.dataset[idx])
+        data_sample = self.dataset[idx]
+        x_real = data_sample.x
+        res = super().is_input_correct_shaped(x_real) # check if the input is correct shape, since some samples are wrong
+        if not res:
+            #print(data_sample)
+            x_real = super().adjust_input_shape(x_real) # in case reshape the tensor appending the last timestamp features   
+        data_sample.x = x_real
+        return data_sample
 class GraphWaveNetDataset(BaseGraphDataset):
     def __init__(self, dataset):
         # Data(x=[1171, 110], edge_index=[2, 1369852], edge_attr=[1369852], y=[1171])
@@ -25,3 +34,21 @@ class GraphWaveNetDataset(BaseGraphDataset):
         x = x_real.view(self.n_nodes, self.n_features, self.seq_length).permute(1, 0, 2)        # rechanged the size 25/07/2025
 
         return x, y
+    
+class HyperStockGraphDataset(BaseGraphDataset):
+    def __init__(self, dataset):
+        # Data(x=[n_nodes, features (5) * timestamps ], edge_index=[2, 1369852], edge_attr=[1369852], y=[1171])
+        super().__init__(dataset)
+        
+    def __getitem__(self, idx):
+        data_sample = self.dataset[idx] 
+        x = data_sample.x 
+        res = super().is_input_correct_shaped(x) # check if the input is correct shape, since some samples are wrong
+        if not res:
+            x = super().adjust_input_shape(x) # in case reshape the tensor appending the last timestamp features
+        
+        # Write specifit reshape code
+        x = x.reshape((self.n_nodes, self.n_features, self.seq_length)).permute(0,2,1)
+        adj = to_dense_adj(edge_index=data_sample.edge_index, edge_attr=data_sample.edge_attr).squeeze() #create adjacency list
+        y =  torch.tensor(data_sample.y.clone().detach(), dtype=torch.float32).unsqueeze(1)
+        return x, y, adj

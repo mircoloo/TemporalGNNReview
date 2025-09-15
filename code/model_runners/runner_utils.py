@@ -12,7 +12,7 @@ class BaseGraphDataset(Dataset):
         assert len(dataset) > 0, "0 data in dataset, impossibile to create Dataset" 
         
         self.n_nodes = self.dataset[0].x.shape[0]
-        self.seq_length = int(self.dataset[0].x.shape[1] / 5)
+        self.seq_length = int(self.dataset[0].x.shape[1] / 5) # / 5 beacuse we have 5 features
         self.n_features = int(self.dataset[0].x.shape[1] / self.seq_length)
         self.n_edges = self.dataset[0].edge_index.shape[1]
 
@@ -45,18 +45,6 @@ class BaseGraphDataset(Dataset):
         x = torch.cat( (x, last_values), dim = 1)
         return x 
     
-
-
-class SummaryWriter():
-    def __init__(self, df: pd.DataFrame, log_dir: str):
-        """
-        Initialize the SummaryWriter with the given arguments.
-        """
-        self.df = df
-        self.log_dir = log_dir
-        
-        pass
-
 
 
     

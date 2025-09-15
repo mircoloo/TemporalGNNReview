@@ -2,31 +2,11 @@
 from model_runners.base_runner import BaseModelRunner
 from models.HyperStockGAT.models.base_models import NCModel
 from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, recall_score
-from torch_geometric.utils import to_dense_adj
 from torch.utils.data import DataLoader
 from model_runners.runner_utils import BaseGraphDataset
 from torch.utils.tensorboard import SummaryWriter
 import torch
-
-
-class HyperStockGraphDataset(BaseGraphDataset):
-    def __init__(self, dataset):
-        # Data(x=[n_nodes, features (5) * timestamps ], edge_index=[2, 1369852], edge_attr=[1369852], y=[1171])
-        super().__init__(dataset)
-        
-    def __getitem__(self, idx):
-        data_sample = self.dataset[idx] 
-        x = data_sample.x 
-        res = super().is_input_correct_shaped(x) # check if the input is correct shape, since some samples are wrong
-        if not res:
-            x = super().adjust_input_shape(x) # in case reshape the tensor appending the last timestamp features
-        
-        # Write specifit reshape code
-        x = x.reshape((self.n_nodes, self.n_features, self.seq_length)).permute(0,2,1)
-        adj = to_dense_adj(edge_index=data_sample.edge_index, edge_attr=data_sample.edge_attr).squeeze() #create adjacency list
-        y =  torch.tensor(data_sample.y.clone().detach(), dtype=torch.float32).unsqueeze(1)
-        return x, y, adj
-
+from data.geometric_dataset_gen import HyperStockGraphDataset
 
 
 class HyperStockGraphRunner(BaseModelRunner):
