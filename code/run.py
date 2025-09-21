@@ -217,7 +217,7 @@ def main(args: argparse.Namespace) -> None:
         y_pred, y_true = runner.test(test_dataset, seq_length=window_size, num_features=5)
 
     elif args.model == 'hyperstockgat':
-        from model_runners.hyperstockgraph_runner import HyperStockGraphRunner
+        from model_runners.hyperstockgat_runner import HyperStockGraphRunner
         NCModel = load_model('hyperstockgat')
         
         args = argparse.Namespace(
