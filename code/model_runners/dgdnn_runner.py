@@ -150,7 +150,6 @@ class DGDNNRunner(BaseModelRunner):
     def test(self, test_dataset, window_size, num_nodes, batch_size=1):
         test_dataset = DGDNNDataset(test_dataset)  
         test_loader = DataLoader(test_dataset, batch_size=batch_size)
-
         self.model.eval()
         all_preds = []
         all_labels = []
@@ -172,11 +171,7 @@ class DGDNNRunner(BaseModelRunner):
                 all_preds.extend(preds.flatten().tolist())
                 all_labels.extend(batch.y.cpu().flatten().tolist())
 
-        return all_preds, all_labels
-
-
-
-
+        return {'preds': np.array(all_preds), 'targets': np.array(all_labels)}
 
 # Define optimizer and objective function
 def theta_regularizer(theta):

@@ -27,16 +27,16 @@ def evaluate_decorator(func):
         """
         Decorator to evaluate the model on a given dataset with comprehensive metrics.
         """
-        def wrapper(self, test_loader, **kwargs):
+        def wrapper(self, *args, **kwargs):
             
             
             print(f"\n{'='*80}")
             print(f"Evaluating {self.model_name} on {self.market_name} dataset...")
             
             # Call the original test function
-            results = func(self, test_loader, **kwargs)
-            
+            results = func(self, *args, **kwargs)
             # Check if results contain predictions and targets
+            print(f"Results contain predictions and targets: {isinstance(results, dict) and 'preds' in results and 'targets' in results}")
             if isinstance(results, dict) and 'preds' in results and 'targets' in results:
                 preds = results['preds']
                 targets = results['targets']
@@ -44,7 +44,7 @@ def evaluate_decorator(func):
                 # Determine if classification or regression based on unique values
                 unique_targets = np.unique(targets)
                 is_binary_classification = len(unique_targets) <= 2
-                
+                print(f"Detected {'binary classification' if is_binary_classification else 'regression'} task based on target values.")
                 if is_binary_classification:
                     # Classification metrics
                     acc = accuracy_score(targets, preds)

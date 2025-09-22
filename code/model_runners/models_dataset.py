@@ -7,7 +7,6 @@ class DGDNNDataset(BaseGraphDataset):
         # Data(x=[1171, 110], edge_index=[2, 1369852], edge_attr=[1369852], y=[1171])
         super().__init__(dataset)
     def __getitem__(self, idx):
-        print(self.dataset[idx])
         data_sample = self.dataset[idx]
         x_real = data_sample.x
         res = super().is_input_correct_shaped(x_real) # check if the input is correct shape, since some samples are wrong
@@ -33,9 +32,9 @@ class GraphWaveNetDataset(BaseGraphDataset):
         y = data_sample.y.long()  # Ensure y is long for classification
         x = x_real.view(self.n_nodes, self.n_features, self.seq_length).permute(1, 0, 2)        # rechanged the size 25/07/2025
 
-        return x, y
+        return torch.tensor(x), torch.tensor(y)
     
-class HyperStockGraphDataset(BaseGraphDataset):
+class HyperStockGATDataset(BaseGraphDataset):
     def __init__(self, dataset):
         # Data(x=[n_nodes, features (5) * timestamps ], edge_index=[2, 1369852], edge_attr=[1369852], y=[1171])
         super().__init__(dataset)
@@ -51,4 +50,6 @@ class HyperStockGraphDataset(BaseGraphDataset):
         x = x.reshape((self.n_nodes, self.n_features, self.seq_length)).permute(0,2,1)
         adj = to_dense_adj(edge_index=data_sample.edge_index, edge_attr=data_sample.edge_attr).squeeze() #create adjacency list
         y =  torch.tensor(data_sample.y.clone().detach(), dtype=torch.float32).unsqueeze(1)
+
+        print(f"HyperStockGATDataset: x.shape: {x.shape}, adj.shape: {adj.shape}, y.shape: {y.shape}")
         return x, y, adj

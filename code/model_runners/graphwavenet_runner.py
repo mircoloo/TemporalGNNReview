@@ -1,6 +1,8 @@
 #from model_runners.runner_utils import BaseGraphDataset
+import numpy as np
+from tabulate import tabulate
 from model_runners.models_dataset import GraphWaveNetDataset
-from model_runners.base_runner import BaseModelRunner
+from model_runners.base_runner import BaseModelRunner, evaluate_decorator
 import torch
 from torch_geometric.loader import DataLoader
 from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, precision_score, recall_score 
@@ -27,8 +29,8 @@ class GraphWaveNetRunner(BaseModelRunner):
         train_set = GraphWaveNetDataset(train_dataset)
         val_set = GraphWaveNetDataset(val_dataset)
         # Use actual batching
-        train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-        val_loader = DataLoader(val_set, batch_size=batch_size)
+        train_loader = DataLoader(train_set, batch_size=1, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=1)
 
         best_val_loss = float('inf')
         for epoch in range(num_epochs):
@@ -40,7 +42,7 @@ class GraphWaveNetRunner(BaseModelRunner):
                 x, y = batch
                 x = x.to(self.device)
                 y = y.to(self.device)
-                
+                                
                 optimizer.zero_grad()
                 
                 # Forward pass with batched inputs
@@ -59,65 +61,73 @@ class GraphWaveNetRunner(BaseModelRunner):
             # Training metrics
             avg_train_loss = train_loss / n_train
             # Validation every 5 epochs
-            if epoch % 5 == 0:
+            if val_dataset and (epoch % 5 == 0):
                 self.model.eval()
                 val_metrics = {
-                    'loss': 0.0,
-                    'acc': 0.0,
-                    'prec': 0.0,
-                    'rec': 0.0,
-                    'f1': 0.0,
-                    'mcc': 0.0
+                    'loss': 0.0, 'acc': 0.0, 'prec': 0.0, 
+                    'f1': 0.0, 'mcc': 0.0, 'rec': 0.0
                 }
                 n_val = 0
-                val_preds = []
-                val_targets = []
-
+                
                 with torch.no_grad():
-                    for batch in val_loader:
-                        x_val, y_val = batch
-                        x_val = x_val.to(self.device)
-                        y_val = y_val.to(self.device)
-
-                        output = self.model(x_val)
-                        output_for_loss = output[:, :, :, -1]
-                        predict = output_for_loss.squeeze(1)
-                        real = y_val.float()
-
-                        loss = criterion(predict, real)
-                        val_metrics['loss'] += loss.item()
-
-                        # Store predictions and targets
-                        preds = (torch.sigmoid(predict) > threshold).int()
-                        val_preds.append(preds.cpu())
-                        val_targets.append(real.cpu())
+                    for batch in val_loader:          
+                        x, y = batch
+                        x = x.to(self.device)
+                        y = y.to(self.device)
+                        
+                        outputs = self.model(x)
+                        output_for_loss = output[:, :, :, -1]  # Take last timestep
+                        predict = output_for_loss.squeeze(1)  # Remove feature dimension
+                        targets = y.float().squeeze()  # [B, num_nodes]
+                        outputs = output.squeeze()
+                        y = y.squeeze()
+                        print(f"Validation batch x.shape: {x.shape}, y.shape: {y.shape}, outputs.shape: {outputs.shape}, predict.shape: {predict.shape}, targets.shape: {targets.shape}")
+                        # Compute metrics for batch
+                        val_metrics['loss'] += criterion(outputs, targets).item()
+                        
+                        # Convert predictions to binary
+                        preds = (torch.sigmoid(outputs) > 0.5).int().cpu()
+                        targets = targets.int().cpu()
+                        
+                        # Compute metrics
+                        val_metrics['acc'] += accuracy_score(
+                            targets.flatten(), preds.flatten())
+                        val_metrics['f1'] += f1_score(
+                            targets.flatten(), preds.flatten(), zero_division=0)
+                        val_metrics['rec'] += recall_score(
+                            targets.flatten(), preds.flatten())
+                        val_metrics['mcc'] += matthews_corrcoef(
+                            targets.flatten(), preds.flatten())
+                        val_metrics['prec'] += precision_score(
+                            targets.flatten(), preds.flatten(), zero_division=0)
+                        
                         n_val += 1
 
-                # Process all predictions
+                # Average metrics
                 if n_val > 0:
-                    y_pred = torch.cat(val_preds, dim=0)
-                    y_true = torch.cat(val_targets, dim=0)
+                    for k in val_metrics:
+                        val_metrics[k] /= n_val
+                    
+                    # Print results in a table format
+                    if epoch % 5 == 0 or epoch == num_epochs:
+                        headers = ["Metric", "Value"]
+                        table_data = [
+                            ["Train Loss", f"{avg_train_loss:.4f}"],
+                            ["Val Loss", f"{val_metrics['loss']:.4f}"],
+                            ["Accuracy", f"{val_metrics['acc']:.4f}"],
+                            ["Precision", f"{val_metrics['prec']:.4f}"],
+                            ["Recall", f"{val_metrics['rec']:.4f}"],
+                            ["F1 Score", f"{val_metrics['f1']:.4f}"],
+                            ["MCC", f"{val_metrics['mcc']:.4f}"]
+                        ]
+                        
+                        print(f"\nEpoch {epoch+1}/{num_epochs} Results:")
+                        print(tabulate(table_data, headers=headers, tablefmt="pretty"))
+                        print("\n")
 
-                    # Calculate metrics
-                    val_metrics['acc'] = accuracy_score(y_true.flatten(), y_pred.flatten())
-                    val_metrics['prec'] = precision_score(y_true.flatten(), y_pred.flatten(), zero_division=0)
-                    val_metrics['rec'] = recall_score(y_true.flatten(), y_pred.flatten(), zero_division=0)
-                    val_metrics['f1'] = f1_score(y_true.flatten(), y_pred.flatten(), zero_division=0)
-                    val_metrics['mcc'] = matthews_corrcoef(y_true.flatten(), y_pred.flatten())
-                    val_metrics['loss'] /= n_val
+                self.model.train()
 
-                    # Add histogram of predictions
-
-                    print(f"Epoch {epoch+1}/{num_epochs} - "
-                          f"Train Loss: {avg_train_loss:.4f} - "
-                          f"Val Loss: {val_metrics['loss']:.4f} - "
-                          f"Acc: {val_metrics['acc']:.4f} - "
-                          f"Prec: {val_metrics['prec']:.4f} - "
-                          f"Rec: {val_metrics['rec']:.4f} - "
-                          f"F1: {val_metrics['f1']:.4f} - "
-                          f"MCC: {val_metrics['mcc']:.4f}")
-
-
+    @evaluate_decorator
     def test(self, test_dataset, seq_length, num_features, batch_size=32, config=None):
         test_set = GraphWaveNetDataset(test_dataset)
         test_loader = DataLoader(test_set, batch_size=batch_size)
@@ -176,4 +186,4 @@ class GraphWaveNetRunner(BaseModelRunner):
                 test_metrics=test_metrics
             )
 
-        return y_pred, y_true
+        return {'preds': np.array(y_pred), 'targets': np.array(y_true)}
