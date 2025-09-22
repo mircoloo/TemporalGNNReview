@@ -62,8 +62,8 @@ model_params:
 
 # Parameters for the training process
 training_params:
-  learning_rate: 2e-4     # From paper: 2e-4
-  weight_decay: 1.5e-5     # From paper: 1.5e-5
-  epochs: 300               # From paper
+  learning_rate: 2e-3     # From paper: 2e-4
+  weight_decay: 1.5e-3     # From paper: 1.5e-5
+  epochs: 100               # From paper
   neighbour_radius_coeff: 8.6e-3  # From paper: α = 2.9e-3
-  batch_size: 4
+  batch_size: 64

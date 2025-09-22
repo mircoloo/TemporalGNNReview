@@ -1,4 +1,4 @@
-#Files
+# Files
 diario_di_bordo
 token
 *.err
@@ -6,17 +6,30 @@ token
 *.slurm
 *.log
 *.pyc
-#Directories
-code/data/*
-code/tesi_venv/*
-cluster/*
-code/models/GraphWaveNet/data/
-code/models/weights/
-code/logs/
-code/sbatch_outputs
-code/sbatch_scripts
-todo.txt
-logs/
-runs/
-analysys_results/
 
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Directories
+/code/data/*
+!code/data/geometric_dataset_gen.py
+/code/tesi_venv/
+/cluster/
+/code/models/GraphWaveNet/data/
+/code/models/weights/
+/code/logs/
+/code/sbatch_outputs/
+/code/sbatch_scripts/
+/logs/
+/runs/
+/analysys_results/
+
+# Other
+todo.txt
+.env

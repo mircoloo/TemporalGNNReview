@@ -6,7 +6,7 @@ import sys
 from models.DGDNN.dgdnn import DGDNN
 from models.GraphWaveNet.gwnet import gwnet
 from models.DARNN.DARNN import DARNN
-#from models.HyperStockGAT.training.models.base_models import NCModel
+from models.hyperstockgat.training.models.base_models import NCModel
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
@@ -25,8 +25,8 @@ def load_model(model_name: str):
             return gwnet
         case "DARNN":
             return DARNN
-        # case "hyperstockgat": to implement later
-        #     return NCModel
+        case "hyperstockgat": #to implement later
+             return NCModel
         case _:  # default case for any other model name
             raise ValueError(f"Unknown model name: {model_name}")
         

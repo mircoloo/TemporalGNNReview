@@ -150,9 +150,9 @@ def main(args: argparse.Namespace) -> None:
             num_nodes,
             batch_size=batch_size)
             
-        y_pred, y_true = runner.test(test_dataset, 
-                                     window_size, 
-                                     num_nodes)
+        runner.test(test_dataset, 
+                    window_size, 
+                    num_nodes)
 
 
         
@@ -217,13 +217,17 @@ def main(args: argparse.Namespace) -> None:
         y_pred, y_true = runner.test(test_dataset, seq_length=window_size, num_features=5)
 
     elif args.model == 'hyperstockgat':
-        from model_runners.hyperstockgat_runner import HyperStockGraphRunner
+        from model_runners.hyperstockgat_runner import HyperStockGATRunner
         NCModel = load_model('hyperstockgat')
         
         args = argparse.Namespace(
-            p='../data/2013-01-01',
-            m='NASDAQ',
-            t=None,
+            #p='../data/2013-01-01',
+            #m='NASDAQ',
+            device = device,
+            feat_dim = 5,  # Assuming each node has 5 features
+            n_nodes = num_nodes,  # Number of nodes in the graph
+            n_classes = 1,
+            #t=None,
             l=window_size,
             u=256,
             s=10,
@@ -236,8 +240,8 @@ def main(args: argparse.Namespace) -> None:
             lr=0.001,
             dropout=0.2,
             model='HGCN',
-            dim=256,
-            manifold='PoincareBall',
+            dim=6, #input dim for the decoder(?)
+            manifold='Hyperboloid',
             c=1.0,
             cuda=0,
             epochs=5000,
@@ -258,7 +262,6 @@ def main(args: argparse.Namespace) -> None:
             min_epochs=100,
             task='nc',
             pretrained_embeddings=None,
-            pos_weight=0,
             num_layers=10,
             bias=1,
             act='relu',
@@ -273,16 +276,13 @@ def main(args: argparse.Namespace) -> None:
             normalize_feats=1,
             normalize_adj=1,
             split_seed=1234,
-            device = device,
-            num_feat = 5,  # Assuming each node has 5 features
-            num_nodes = num_nodes,  # Number of nodes in the graph
-            n_classes = 1
+            
         )
    
 
         model_HSG = NCModel(args).to(device)
 
-        runner = HyperStockGraphRunner(model_HSG, device, market_name)
+        runner = HyperStockGATRunner(model_HSG, device, market_name)
         print(f"Model parameters: {sum([p.numel() for p in model_HSG.parameters()]):,}")
         print("Model created successfully:")
 
