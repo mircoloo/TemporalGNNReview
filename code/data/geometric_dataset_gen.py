@@ -25,7 +25,8 @@ class MyDataset(Dataset):
                  window: int, 
                  dataset_type: str, 
                  fast_approx, 
-                 normalize_method: str = ''):
+                 normalize_method: str = '',
+                 train_dates: List[str] = ''):
         
         super().__init__()
         
@@ -71,7 +72,7 @@ class MyDataset(Dataset):
         # 4 Define path for normalization parameters
         self.norm_params = {}
         # 5 Find train dataset's normalization parameters path
-        train_dir = self.desti / f'{market}_Train_{start}_{end}_{window}{f"_{self.normalize_method}" if self.normalize_method else ""}'
+        train_dir = self.desti / f'{market}_Train_{train_dates[0]}_{train_dates[1]}_{window}{f"_{self.normalize_method}" if self.normalize_method else ""}'
         self.norm_params_path = train_dir / 'norm_params.pt'
         
 
@@ -384,10 +385,12 @@ class MyDataset(Dataset):
         self._create_ticker_mapping()
         
         # For validation and test sets, load normalization parameters if they exist
-        if self.dataset_type in ['val', 'test'] and self.normalize_method in ['zscore', 'minmax', 'robust', 'maxabs']:
+        
+        if self.dataset_type.lower() in ['validation', 'test'] and self.normalize_method in ['zscore', 'minmax', 'robust', 'maxabs']:
             loaded = self._load_norm_params()
             if loaded:
                 print(f">>> Using training set normalization parameters for {self.dataset_type} dataset")
+                
         
         print(f"\n>>> Creating {len(self.dates) - self.window + 1} graphs for {self.dataset_type} dataset")
         print(f">>> Using {self.normalize_method if self.normalize_method else 'no'} normalization")
@@ -469,7 +472,7 @@ class MyDataset(Dataset):
             # Get the first 5 features
             features_df = df_reindexed.iloc[:, :5].astype(float)
             # Apply stock-level normalization if parameters exist
-            if (self.normalize_method in ['zscore', 'minmax', 'robust', 'maxabs'] and 
+            if (self.normalize_method.lower() in ['zscore', 'minmax', 'robust', 'maxabs'] and 
                 hasattr(self, 'norm_params') and 
                 'stock_params' in self.norm_params and 
                 ticker in self.norm_params['stock_params']):

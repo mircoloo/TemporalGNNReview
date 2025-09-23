@@ -90,11 +90,11 @@ def main(args: argparse.Namespace) -> None:
     norm_method = 'zscore'
     # Build or retrieve the datasets
     print("-" * 5, "Building train dataset...", "-" * 5)
-    train_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, train_sedate[0], train_sedate[1], window_size, 'Train', use_fast_approximation, normalize_method=norm_method)
+    train_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, train_sedate[0], train_sedate[1], window_size, 'Train', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate)
     print("-" * 5, "Building validation dataset...", "-" * 5)
-    validation_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, val_sedate[0], val_sedate[1], window_size, 'Validation', use_fast_approximation, normalize_method=norm_method)
+    validation_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, val_sedate[0], val_sedate[1], window_size, 'Validation', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate)
     print("-" * 5, "Building test dataset...", "-" * 5)
-    test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, test_sedate[0], test_sedate[1], window_size, 'Test', use_fast_approximation, normalize_method=norm_method)
+    test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, test_sedate[0], test_sedate[1], window_size, 'Test', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate)
 
     num_nodes =len(filtered_company_list)
     features = main_config_yaml["features"]
