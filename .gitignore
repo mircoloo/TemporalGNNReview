@@ -22,6 +22,7 @@ Thumbs.db
 /code/tesi_venv/
 /cluster/
 /code/models/GraphWaveNet/data/
+/code/models/hyperstockgat/data/
 /code/models/weights/
 /code/logs/
 /code/sbatch_outputs/
@@ -29,6 +30,9 @@ Thumbs.db
 /logs/
 /runs/
 /analysys_results/
+*hyper-stockgat-www*
+*Temporal_Relational_Stock_Ranking*
+
 
 # Other
 todo.txt

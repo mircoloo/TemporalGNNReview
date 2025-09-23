@@ -96,6 +96,7 @@ class NCModel(BaseModel):
             self.weights = self.weights.to(args.device)
 
     def decode(self, h, adj):
+        print(f"")
         output = self.decoder.decode(h, adj)
         return F.leaky_relu(output, 0.2)
 

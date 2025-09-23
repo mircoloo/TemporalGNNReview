@@ -63,7 +63,11 @@ class LinearDecoder(Decoder):
         self.decode_adj = False
         self.time_conv = nn.Conv2d(int(args.l), 1, kernel_size=(1, 3), stride=(1,  1), padding=(0, 1))
     def decode(self, x, adj):
-        h = self.manifold.proj_tan0(self.manifold.logmap0(x, c=self.c), c=self.c)
+        print(f"LinearDecoder decode input {x.shape=} {adj.shape=}")
+        print(f"Manifold: {self.manifold.name}")
+        h_tangent = self.manifold.logmap0(x, c=self.c)
+        print(f"{h_tangent.shape=}")
+        h = self.manifold.proj_tan0(h_tangent, c=self.c)
         h = self.time_conv(h)
         h = h.squeeze(0).squeeze(0)
         return F.leaky_relu(super(LinearDecoder, self).decode(h, adj))

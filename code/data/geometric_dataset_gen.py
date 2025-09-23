@@ -48,7 +48,10 @@ class MyDataset(Dataset):
         self.dataset_type = dataset_type #(train, test, val)
         self.fast_approx = fast_approx
         
+
+        # 1 step find the common dates and valid companies
         self.company_list, self.dates, self.next_day = self.find_dates(start, end, comlist, self.global_data_search_cutoff)
+
 
         if not self.dates or len(self.dates) < self.window + 1:
             print(f"Insufficient common dates ({len(self.dates)}) found for a window of size {self.window}. Dataset will be empty.")
@@ -58,26 +61,26 @@ class MyDataset(Dataset):
             print(f"No valid companies with data found. {self.dataset_type} Dataset will be empty.")
             self.dates = []
 
-        # 1 step create the directories path
-        # Create directory path
+        
+        # 2 Create directory path to store the snapshot graphs
         self.directory_path = self.desti / f'{market}_{dataset_type}_{start}_{end}_{window}{f"_{self.normalize_method}" if self.normalize_method else ""}'
         
-        # Define path for index to ticker mapping
+        # 3 Define path for index to ticker mapping
         self.index_mapping_path = self.directory_path / 'ticker_index_mapping.json'
         
-        # Define path for normalization parameters
+        # 4 Define path for normalization parameters
         self.norm_params = {}
-        # Find train dataset's normalization parameters path
+        # 5 Find train dataset's normalization parameters path
         train_dir = self.desti / f'{market}_Train_{start}_{end}_{window}{f"_{self.normalize_method}" if self.normalize_method else ""}'
         self.norm_params_path = train_dir / 'norm_params.pt'
         
 
 
-        # This will be False if directory doesn't exist
+        # This will be False only one snapshot graph file or mapping file is missing
         graph_files_exist = all((self.directory_path / f'graph_{i}.pt').exists() for i in range(len(self.dates) - window + 1))
         mapping_file_exists = self.index_mapping_path.exists()
         
-
+        # 6 Create graphs only if they don't already exist
         if not graph_files_exist or not mapping_file_exists:
             if self.dates and len(self.dates) >= self.window + 1 and self.company_list:
                 # For normalization that requires statistics
@@ -97,7 +100,8 @@ class MyDataset(Dataset):
                             # Load normalization parameters
                             print(f"Loading normalization parameters from {self.norm_params_path}")
                             self._load_norm_params()
-                
+
+                # 6 Create snapshot graphs
                 self._create_graphs()
             else:
                 print("Skipping graph creation due to insufficient common dates or no valid companies.")
@@ -222,45 +226,6 @@ class MyDataset(Dataset):
             print(f"Warning: No common next_day found after {end}. This will prevent graph generation.")
             
         return filtered_comlist, all_dates, next_common_day
-
-    def signal_energy(self, x_tuple: Tuple[float]) -> float:
-        """Calculates the signal energy of a given tuple of floats."""
-        x = np.array(x_tuple)
-        return np.sum(np.square(x))
-        
-    def information_entropy(self, x_tuple: Tuple[float]) -> float:
-        """Calculates the information entropy of a given tuple of floats."""
-        x = np.array(x_tuple)
-        unique, counts = np.unique(x, return_counts=True)
-        total_counts = np.sum(counts)
-        probabilities = counts / total_counts
-        entropy = -np.sum(probabilities * np.log(probabilities + 1e-9))
-        return entropy
-
-    def adjacency_matrix(self, X: torch.Tensor) -> torch.Tensor:
-        A = torch.zeros((X.shape[0], X.shape[0])) #NxN
-        X_np = X.numpy() # convert into numpy array
-        energy = np.array([self.signal_energy(tuple(x)) for x in X_np])
-        entropy = np.array([self.information_entropy(tuple(x)) for x in X_np])
-
-        for i in range(X.shape[0]):
-            for j in range(X.shape[0]):
-                concat_x = np.concatenate((X_np[i], X_np[j]))
-                A[i, j] = torch.tensor((energy[i] / (energy[j] + 1e-9)) * (math.exp(entropy[i] + entropy[j] - self.information_entropy(tuple(concat_x)))), dtype=torch.float32)
-
-        if self.fast_approx:
-            t = 5
-            A_np = A.numpy()
-            num_nodes = A_np.shape[0]
-            A_tilde = A_np + np.eye(num_nodes)
-            sum_A_tilde_rows = A_tilde.sum(axis=1)
-            D_tilde_diag = np.where(sum_A_tilde_rows > 0, 1 / np.sqrt(sum_A_tilde_rows), 0)
-            D_tilde = np.diag(D_tilde_diag)
-            H = D_tilde @ A_np @ D_tilde
-            return torch.from_numpy(expm(-t * (np.eye(num_nodes) - H))).float()
-
-        A[A < 1] = 1 # Thresholding to ensure no zero entries
-        return torch.log(A)
 
     # Method to load stock data for all dates
     def _load_stock_data(self, all_dates=None):
@@ -400,24 +365,106 @@ class MyDataset(Dataset):
         
         print(f"Ticker to index mapping created and saved to {self.index_mapping_path}")
 
-    # Modified node_feature_matrix to apply stock-level normalization
-    def node_feature_matrix(self, dates: List[str]) -> torch.Tensor:
-        """Create and normalize the node feature matrix for given dates."""
+    
+
+    def _create_graphs(self):
+        # 6 Create snapshot graphs
+        if len(self.dates) < self.window + 1 or not self.company_list:
+            print(f"Skipping graph generation due to insufficient data.")
+            return
+
+        dates_with_next_day = self.dates + ([self.next_day] if self.next_day else [])
+        if len(dates_with_next_day) < self.window + 1:
+            print("Not enough dates to create even one graph.")
+            return
+
+        self.directory_path.mkdir(parents=True, exist_ok=True)
+
+        # 7 Create ticker mapping JSON before generating graphs
+        self._create_ticker_mapping()
+        
+        # For validation and test sets, load normalization parameters if they exist
+        if self.dataset_type in ['val', 'test'] and self.normalize_method in ['zscore', 'minmax', 'robust', 'maxabs']:
+            loaded = self._load_norm_params()
+            if loaded:
+                print(f">>> Using training set normalization parameters for {self.dataset_type} dataset")
+        
+        print(f"\n>>> Creating {len(self.dates) - self.window + 1} graphs for {self.dataset_type} dataset")
+        print(f">>> Using {self.normalize_method if self.normalize_method else 'no'} normalization")
+        
+        # 8 For each possible time window, create a graph snapshot
+        for i in tqdm(range(len(self.dates) - self.window + 1)):  # w=3 -> 1,2,3,4,5 -> 1,2,3, ... , len(dates)-w+1=3
+            filename = self.directory_path / f'graph_{i}.pt'
+            if filename.exists():
+                continue
+                
+            # 9 Get the date window (including next day for target)
+            box = self.dates[i : i + self.window + 1] 
+            
+            # 10 Create and normalize feature matrix
+            X = self.create_feature_node_timestamp_matrix(box) # [feature, node, timestep]
+
+
+
+            if X.shape[1] == 0: # X.shape[1] is the number of nodes
+                print(f"Skipping graph {i}: No nodes.")
+                continue
+
+            # Target C is based on the 'Close' price (row index 0)
+            C = torch.zeros(X.shape[1]) # A vector of size [num_nodes]
+
+            # X is [feature, node, timestep] - for each node, if Close[today] - Close[yesterday] > 0, C[node] = 1 else 0
+            for j in range(C.shape[0]):
+                if X[0, j, -1] - X[0, j, -2] > 0:
+                    C[j] = 1
+
+            # Remove the last timestep (prediction one)
+            X_features = X[:, :, :-1]
+            
+            if X_features.nelement() == 0:
+                print(f"Skipping graph {i}: Feature matrix is empty.")
+                continue
+                
+            # from [feature, node, timestep] to [node, feature, timestep] -> [node, feature * timestamps]
+            X_final = X_features.permute(1, 0, 2).reshape(X_features.shape[1], -1)
+            
+            # Handle any remaining NaN values
+            X_final = torch.nan_to_num(X_final, 0)
+
+            try:
+                # 11 Create adjacency matrix and convert to edge_index and edge_attr
+                edge_index, edge_attr = dense_to_sparse(self.adjacency_matrix(X_final)) # [N;F*T] -> [N;N] -> edge_index [2;E], edge_attr [E]
+            except Exception as e:
+                print(f"Skipping graph {i} due to adjacency matrix error: {e}")
+                continue
+
+            data = Data(x=X_final, edge_index=edge_index, edge_attr=edge_attr, y=C)
+            torch.save(data, filename)
+            
+        print(f"\n>>> Finished creating {self.dataset_type.upper()} dataset with {len(self.dates) - self.window + 1} graphs")
+        print(f">>> Saved to: {self.directory_path}")
+   
+    
+
+    def create_feature_node_timestamp_matrix(self, dates: List[str]) -> torch.Tensor:
+        """Create and normalize the node feature matrix for given dates (used with box)."""
         # Convert date strings to datetime objects for indexing
         dates_dt = pd.to_datetime(dates)
         
         # Initialize the feature tensor X with the correct dimensions
-        # 5 features, number of companies, and number of time steps in the window
+        # 5 features, number of companies, and number of time steps in the window [F;N;T]
         X = torch.zeros((5, len(self.company_list), len(dates_dt)))
 
+        # 11 For each company in the company list
         for idx, ticker in enumerate(self.company_list):
+            # Get the stock filpath (csv with historical data)
             d_path = self._get_ticker_filepath(ticker)
             df = pd.read_csv(d_path, parse_dates=[0], index_col=0)
             # Ensure the DataFrame index is just the date part for clean matching
             df.index = pd.to_datetime(df.index.date)
 
             # Reindex the DataFrame to match the exact dates of the window
-            df_reindexed = df.reindex(dates_dt, fill_value=0)
+            df_reindexed = df.reindex(dates_dt, fill_value=0) # [Total_days, Features]
             
             # Get the first 5 features
             features_df = df_reindexed.iloc[:, :5].astype(float)
@@ -477,78 +524,53 @@ class MyDataset(Dataset):
             df_features = features_df.transpose()
             
             # Assign to tensor
-            X[:, idx, :] = torch.from_numpy(df_features.to_numpy())
-
+            X[:, idx, :] = torch.from_numpy(df_features.to_numpy()) #[F;N;T] maybe save this to recover all the dataset
+            
         return X
 
-    def _create_graphs(self):
-        if len(self.dates) < self.window + 1 or not self.company_list:
-            print(f"Skipping graph generation due to insufficient data.")
-            return
+    
+    def adjacency_matrix(self, X: torch.Tensor) -> torch.Tensor:
+        num_nodes = X.shape[0]
+        A = torch.zeros((num_nodes, num_nodes)) # [N;N]
+        X_np = X.numpy() # convert into numpy array [N;F*T]
+        energy = np.array([self.signal_energy(tuple(x)) for x in X_np]) # energy for each node x.shape is [F*T]
+        entropy = np.array([self.information_entropy(tuple(x)) for x in X_np])
 
-        dates_with_next_day = self.dates + ([self.next_day] if self.next_day else [])
-        if len(dates_with_next_day) < self.window + 1:
-            print("Not enough dates to create even one graph.")
-            return
+        for i in range(num_nodes): #
+            for j in range(num_nodes):
+                concat_x = np.concatenate((X_np[i], X_np[j])) # concatenate two nodes [F*T + F*T]
+                A[i, j] = \
+                torch.tensor(
+                    (energy[i] / (energy[j] + 1e-9)) * (math.exp(entropy[i] + entropy[j] - self.information_entropy(tuple(concat_x)
+                                                                                                                    ))),dtype=torch.float32)
 
-        self.directory_path.mkdir(parents=True, exist_ok=True)
+        # if self.fast_approx:
+        #     t = 5
+        #     A_np = A.numpy()
+        #     num_nodes = A_np.shape[0]
+        #     A_tilde = A_np + np.eye(num_nodes)
+        #     sum_A_tilde_rows = A_tilde.sum(axis=1)
+        #     D_tilde_diag = np.where(sum_A_tilde_rows > 0, 1 / np.sqrt(sum_A_tilde_rows), 0)
+        #     D_tilde = np.diag(D_tilde_diag)
+        #     H = D_tilde @ A_np @ D_tilde
+        #     return torch.from_numpy(expm(-t * (np.eye(num_nodes) - H))).float()
+        """ 23/09/2025 - try to return simply A
+        A[A < 1] = 1 # Thresholding to ensure no zero entries
+        return torch.log(A)
+        """
+        return A
 
-        # Create ticker mapping JSON before generating graphs
-        self._create_ticker_mapping()
+    def signal_energy(self, x_tuple: Tuple[float]) -> float:
+        """Calculates the signal energy of a given tuple of floats."""
+        x = np.array(x_tuple)
+        return np.sum(np.square(x))
         
-        # For validation and test sets, load normalization parameters if they exist
-        if self.dataset_type in ['val', 'test'] and self.normalize_method in ['zscore', 'minmax', 'robust', 'maxabs']:
-            loaded = self._load_norm_params()
-            if loaded:
-                print(f">>> Using training set normalization parameters for {self.dataset_type} dataset")
-        
-        print(f"\n>>> Creating {len(self.dates) - self.window + 1} graphs for {self.dataset_type} dataset")
-        print(f">>> Using {self.normalize_method if self.normalize_method else 'no'} normalization")
-        
-        for i in tqdm(range(len(self.dates) - self.window + 1)):
-            filename = self.directory_path / f'graph_{i}.pt'
-            if filename.exists():
-                continue
-                
-            # Time window dates + the prediction date
-            box = self.dates[i : i + self.window + 1]
-            
-            # Create and normalize feature matrix
-            X = self.node_feature_matrix(box)
-
-            if X.shape[1] == 0:
-                print(f"Skipping graph {i}: No nodes.")
-                continue
-
-            # Target C is based on the 'Close' price (row index 0)
-            C = torch.zeros(X.shape[1])
-
-            # X is [feature, node, timestep]
-            for j in range(C.shape[0]):
-                if X[0, j, -1] - X[0, j, -2] > 0:
-                    C[j] = 1
-
-            # Remove the last timestep (prediction one)
-            X_features = X[:, :, :-1]
-            
-            if X_features.nelement() == 0:
-                print(f"Skipping graph {i}: Feature matrix is empty.")
-                continue
-                
-            # from [feature, node, timestep] to [node, feature, timestep] -> [node, feature * timestamps]
-            X_final = X_features.permute(1, 0, 2).reshape(X_features.shape[1], -1)
-            
-            # Handle any remaining NaN values
-            X_final = torch.nan_to_num(X_final, 0)
-
-            try:
-                edge_index, edge_attr = dense_to_sparse(self.adjacency_matrix(X_final))
-            except Exception as e:
-                print(f"Skipping graph {i} due to adjacency matrix error: {e}")
-                continue
-
-            data = Data(x=X_final, edge_index=edge_index, edge_attr=edge_attr, y=C)
-            torch.save(data, filename)
-            
-        print(f"\n>>> Finished creating {self.dataset_type.upper()} dataset with {len(self.dates) - self.window + 1} graphs")
-        print(f">>> Saved to: {self.directory_path}")
+    def information_entropy(self, x_tuple: Tuple[float]) -> float:
+        """Calculates the information entropy of a given tuple of floats."""
+        x = np.array(x_tuple)
+        unique, counts = np.unique(x, return_counts=True)
+        total_counts = np.sum(counts)
+        probabilities = counts / total_counts
+        entropy = -np.sum(probabilities * np.log(probabilities + 1e-9))
+        return entropy
+    

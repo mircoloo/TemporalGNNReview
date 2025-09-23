@@ -1,6 +1,5 @@
 
 from model_runners.base_runner import BaseModelRunner
-from models.hyperstockgat.training.models.base_models import NCModel
 from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, recall_score
 from torch.utils.data import DataLoader
 from model_runners.runner_utils import BaseGraphDataset

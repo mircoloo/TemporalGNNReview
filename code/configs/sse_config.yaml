@@ -5,11 +5,11 @@
 # Parameters related to data loading and time periods
 dataset_params:
   market: 'SSE'
-  train_sedate: ['2016-05-01', '2017-06-30'] #ORIGINAL FROM PAPER
+  train_sedate: ['2016-05-01', '2017-06-30'] #['2010-05-01', '2013-06-30']  # #ORIGINAL FROM PAPER
   #train_sedate: ['2010-05-01', '2017-06-30']  
-  val_sedate: ['2017-07-01', '2017-12-31'] #ORIGINAL FROM PAPER
+  val_sedate: ['2017-07-01', '2017-12-31'] #['2013-07-01', '2014-12-31'] # #ORIGINAL FROM PAPER
   #val_sedate: ['2017-07-01', '2018-07-01']
-  test_sedate: ['2018-01-01', '2019-12-31'] #ORIGINAL FROM PAPER
+  test_sedate: ['2018-01-01', '2019-12-31'] #['2015-01-01', '2017-12-31'] # #ORIGINAL FROM PAPER
   #test_sedate: ['2018-07-02', '2022-12-31']
   window_size: 14  # From paper: τ = 19
   use_fast_approximation: false
@@ -62,8 +62,8 @@ model_params:
 
 # Parameters for the training process
 training_params:
-  learning_rate: 2e-3     # From paper: 2e-4
+  learning_rate: 2e-4     # From paper: 2e-4
   weight_decay: 1.5e-3     # From paper: 1.5e-5
-  epochs: 100               # From paper
+  epochs: 300               # From paper 300
   neighbour_radius_coeff: 8.6e-3  # From paper: α = 2.9e-3
-  batch_size: 64
+  batch_size: 16

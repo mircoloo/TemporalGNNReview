@@ -81,7 +81,7 @@ class GraphWaveNetRunner(BaseModelRunner):
                         targets = y.float().squeeze()  # [B, num_nodes]
                         outputs = output.squeeze()
                         y = y.squeeze()
-                        print(f"Validation batch x.shape: {x.shape}, y.shape: {y.shape}, outputs.shape: {outputs.shape}, predict.shape: {predict.shape}, targets.shape: {targets.shape}")
+                        #print(f"Validation batch x.shape: {x.shape}, y.shape: {y.shape}, outputs.shape: {outputs.shape}, predict.shape: {predict.shape}, targets.shape: {targets.shape}")
                         # Compute metrics for batch
                         val_metrics['loss'] += criterion(outputs, targets).item()
                         
