@@ -83,6 +83,7 @@ class GraphWaveNetRunner(BaseModelRunner):
                         y = y.squeeze()
                         #print(f"Validation batch x.shape: {x.shape}, y.shape: {y.shape}, outputs.shape: {outputs.shape}, predict.shape: {predict.shape}, targets.shape: {targets.shape}")
                         # Compute metrics for batch
+                        print(f"{outputs.shape=}, {targets.shape=}")
                         val_metrics['loss'] += criterion(outputs, targets).item()
                         
                         # Convert predictions to binary

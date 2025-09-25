@@ -37,15 +37,15 @@ model_params:
     embedding_size: [224, 384, 640, 384, 256, 256, 256, 256]
 
   GraphWaveNet:
-    layers: 8
-    blocks: 1
-    residual_channels: 64
-    dilation_channels: 64
+    layers: 4
+    blocks: 4
+    residual_channels: 128
+    dilation_channels: 128
     skip_channels: 32
     end_channels: 256
-    kernel_size: 1
+    kernel_size: 4
     gcn_bool: true
-    addaptadj: true
+    addaptadj: false
     dropout: 0.3
 # -----------------------------------------------------------------
 
@@ -53,6 +53,6 @@ model_params:
 training_params:
   learning_rate: 0.0002      # From paper: 2e-4
   weight_decay: 0.000015     # From paper: 1.5e-5
-  epochs: 50               # From paper 300
+  epochs: 300               # From paper 300
   neighbour_radius_coeff: 2.9e-3  # From paper: α = 2.9e-3
   batch_size: 16            
