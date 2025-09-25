@@ -32,8 +32,9 @@ Thumbs.db
 /analysys_results/
 *hyper-stockgat-www*
 *Temporal_Relational_Stock_Ranking*
+code/models/hyperstockgat/preprocess/NASDAQ_industry_relation.npy
 
 
 # Other
 todo.txt
-.env
+.envcode/models/hyperstockgat/preprocess/NASDAQ_industry_relation.npy
