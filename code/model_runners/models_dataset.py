@@ -45,11 +45,36 @@ class HyperStockGATDataset(BaseGraphDataset):
         res = super().is_input_correct_shaped(x) # check if the input is correct shape, since some samples are wrong
         if not res:
             x = super().adjust_input_shape(x) # in case reshape the tensor appending the last timestamp features
-        
         # Write specifit reshape code
         x = x.reshape((self.n_nodes, self.n_features, self.seq_length)).permute(0,2,1)
         adj = to_dense_adj(edge_index=data_sample.edge_index, edge_attr=data_sample.edge_attr).squeeze() #create adjacency list
         y =  torch.tensor(data_sample.y.clone().detach(), dtype=torch.float32).unsqueeze(1)
-
-        print(f"HyperStockGATDataset: x.shape: {x.shape}, adj.shape: {adj.shape}, y.shape: {y.shape}")
         return x, y, adj
+
+
+class DARNNDataset(BaseGraphDataset):
+
+    def __init__(self, dataset):
+        super().__init__(dataset)
+    
+    def __getitem__(self, idx):
+        data_sample = self.dataset[idx] 
+        x = data_sample.x
+
+        res = super().is_input_correct_shaped(x) # check if the input is correct shape, since some samples are wrong
+        if not res:
+            x = super().adjust_input_shape(x) # in case reshape the tensor appending the last timestamp features
+        target = data_sample.y
+        num_nodes = x.shape[0]
+        N = num_nodes  # number of nodes
+        T = int(x.shape[1] / 5) - 1
+        # number of time steps
+        X = x.view(num_nodes, 5, T+1).permute(0, 2, 1)  # [num_nodes, T]
+        X = X[:, :, :1].squeeze()
+        X = X.permute(1, 0)  # [T, N]
+        y_target = torch.zeros((T, num_nodes), dtype=torch.long)
+        for t in range(T):
+            y_target[t, :] = (X[t, :] > X[t+1, :]).long() 
+
+        X = X[:-1, :]  # use all but last timestep as input
+        return X, y_target, target

@@ -5,7 +5,7 @@ import sys
 
 from models.DGDNN.dgdnn import DGDNN
 from models.GraphWaveNet.gwnet import gwnet
-from models.DARNN.DARNN import DARNN
+from models.DARNN.DARNN import MultiStockDARNN
 from models.hyperstockgat.training.models.base_models import NCModel
 from pathlib import Path
 from datetime import datetime
@@ -24,7 +24,7 @@ def load_model(model_name: str):
         case "GraphWaveNet":
             return gwnet
         case "DARNN":
-            return DARNN
+            return MultiStockDARNN
         case "hyperstockgat": #to implement later
              return NCModel
         case _:  # default case for any other model name

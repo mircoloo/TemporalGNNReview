@@ -200,13 +200,14 @@ def main(args: argparse.Namespace) -> None:
         y_pred, y_true = runner.test(test_dataset, window_size, n_features, batch_size=batch_size, config=model_config)
     elif args.model == 'darnn':
         from model_runners.darnn_runner import DARNNRunner
-        DARNN = load_model('DARNN')
-        model_DARNN = DARNN(
-            num_nodes-1,
-            64,
-            64,
-            T=window_size
-
+        MultiStockDARNN = load_model('DARNN')
+        model_DARNN = MultiStockDARNN(
+            N = num_nodes,
+            M = 64,
+            P = 64,
+            T=window_size-1,
+            num_stocks=num_nodes,
+            device=device
         ).to(device)
 
         print(f"Model parameters: {sum([p.numel() for p in model_DARNN.parameters()]):,}")
@@ -214,7 +215,7 @@ def main(args: argparse.Namespace) -> None:
         optimizer = optim.Adam(model_DARNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
         criterion = nn.BCEWithLogitsLoss()
         runner.train(train_dataset, validation_dataset, optimizer, criterion, train_param['epochs'], seq_length=window_size)
-        y_pred, y_true = runner.test(test_dataset, seq_length=window_size, num_features=5)
+        runner.test(test_dataset, seq_length=window_size-1, num_features=5)
 
     elif args.model == 'hyperstockgat':
         from model_runners.hyperstockgat_runner import HyperStockGATRunner

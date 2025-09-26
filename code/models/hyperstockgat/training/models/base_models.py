@@ -34,13 +34,11 @@ class BaseModel(nn.Module):
         self.encoder = getattr(encoders, args.model)(self.c, args)
 
     def encode(self, x, adj):
-        
-        print(f"BaseModel encode input {x.shape=} {adj.shape=}")
         if self.manifold.name == 'Hyperboloid':
             o = torch.zeros_like(x)
             print(f"{o.shape=} {o[:, :, :, 0:1].shape=} {x.shape=}")
             x = torch.cat([o[:, :, :, 0:1], x], dim=3)
-        print(f"BaseModel encode after adding dim {x.shape=} {adj.shape=}")
+        print(f"Encoding input {x.shape=} {adj.shape=}")
         h = self.encoder.encode(x, adj)
         return h
 
@@ -96,7 +94,6 @@ class NCModel(BaseModel):
             self.weights = self.weights.to(args.device)
 
     def decode(self, h, adj):
-        print(f"")
         output = self.decoder.decode(h, adj)
         return F.leaky_relu(output, 0.2)
 
