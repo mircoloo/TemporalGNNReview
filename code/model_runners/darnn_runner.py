@@ -1,4 +1,4 @@
-import tabulate
+from tabulate import tabulate
 from .base_runner import BaseModelRunner, evaluate_decorator
 import torch
 from sklearn.metrics import f1_score, matthews_corrcoef, accuracy_score, mean_absolute_error, mean_squared_error, precision_score, recall_score
@@ -14,32 +14,6 @@ class DARNNRunner(BaseModelRunner):
         super().__init__(model, device, market_name)
         self.model_name = "DARNN"
 
-    def _convert_data(self, data, seq_length, retrieve_index=None): 
-        """
-        Convert data to the format expected by the DA-RNN model.
-        """
-        X = data.x 
-        y = data.y
-        # Assuming data.x is of shape [num_nodes, seq_length * num_features]
-        num_nodes = X.shape[0]
-        close_price_index = 0 
-
-        X = X.reshape(num_nodes, -1, seq_length).permute(0,2,1)[:,:,close_price_index]  # Reshape to [num_nodes, seq_length, num_features] and matain only the closing price (index = 0)
-        # X is shape [n_nodes, seq_length]
-        # select a random index from nodes 
-        if retrieve_index is None:
-            retrieve_index: int = torch.randint(low=0,high=num_nodes, size=(1,1)).item()  # Randomly select a node index    
-
-        target_series = X[retrieve_index, :]
-        target = y[retrieve_index]
-        mask = torch.arange(num_nodes) != retrieve_index
-        drivers = X[mask, :]  
-
-
-        return drivers, target_series, target
-
-        
-    
 
     def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, seq_length, batch_size=32):
         writer = SummaryWriter('runs/')
@@ -88,7 +62,7 @@ class DARNNRunner(BaseModelRunner):
                         # Move batch to device
                         X = X.to(self.device)
                         y_target = y_target.to(self.device)
-                        target = target.to(self.device)
+                        targets = target.to(self.device)
                         outputs = self.model(X, y_target)
                         
                         # Compute metrics for batch
