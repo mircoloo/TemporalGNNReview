@@ -6,7 +6,8 @@ token
 *.slurm
 *.log
 *.pyc
-
+*.pt
+*.csv
 # OS-specific
 .DS_Store
 Thumbs.db
@@ -32,9 +33,9 @@ Thumbs.db
 /analysys_results/
 *hyper-stockgat-www*
 *Temporal_Relational_Stock_Ranking*
-code/models/hyperstockgat/preprocess/NASDAQ_industry_relation.npy
+
 
 
 # Other
 todo.txt
-.envcode/models/hyperstockgat/preprocess/NASDAQ_industry_relation.npy
+code/models/hyperstockgat/preprocess/NASDAQ_industry_relation.npy

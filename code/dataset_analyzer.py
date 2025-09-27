@@ -190,7 +190,24 @@ class MarketAnalyzer():
     def get_snapshots_info_df(self) -> pd.DataFrame:
         return pd.DataFrame(self.get_snapshots_info())
 
+    def get_homophily_score(self, snapshot_index: int) -> float:
+        """
+        Calculate the homophily score for a given snapshot index.
+        """
+        snapshot = self.graph_snapshots[snapshot_index]
+        edge_index = snapshot.edge_index.numpy()
+        targets = snapshot.y.numpy()
 
+        total_edges = edge_index.shape[1]
+        according_edges = 0
+
+        for idx in range(total_edges):
+            src, dst = edge_index[0][idx], edge_index[1][idx]
+            if targets[src] == targets[dst]:
+                according_edges += 1
+
+        homophily_score = according_edges / total_edges if total_edges > 0 else 0.0
+        return homophily_score
     
 
 def main():
