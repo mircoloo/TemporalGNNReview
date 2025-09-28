@@ -54,6 +54,8 @@ model_params:
     dropout: 0.3
   
   DARNN:
+    M: 64
+    P: 64
 
   HyperStockGraph:
     

@@ -31,8 +31,7 @@ class GraphWaveNetDataset(BaseGraphDataset):
         # x = x.permute(0, 3, 1, 2) #(batch_size, num_features, num_nodes, sequence_length)             # rechanged the size 15/07/2025   
         y = data_sample.y.long()  # Ensure y is long for classification
         x = x_real.view(self.n_nodes, self.n_features, self.seq_length).permute(1, 0, 2)        # rechanged the size 25/07/2025
-
-        return torch.tensor(x), torch.tensor(y)
+        return x, y
     
 class HyperStockGATDataset(BaseGraphDataset):
     def __init__(self, dataset):

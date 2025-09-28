@@ -36,9 +36,7 @@ class BaseModel(nn.Module):
     def encode(self, x, adj):
         if self.manifold.name == 'Hyperboloid':
             o = torch.zeros_like(x)
-            print(f"{o.shape=} {o[:, :, :, 0:1].shape=} {x.shape=}")
             x = torch.cat([o[:, :, :, 0:1], x], dim=3)
-        print(f"Encoding input {x.shape=} {adj.shape=}")
         h = self.encoder.encode(x, adj)
         return h
 
@@ -71,7 +69,6 @@ def trr_loss_mse_rank(pred, base_price, ground_truth, mask, alpha, no_stocks):
             F.relu(
                 ((pre_pw_dif*gt_pw_dif)*mask_pw)))
     loss = reg_loss + alpha*rank_loss
-    # print(return_ratio)
     del mask_pw, gt_pw_dif, pre_pw_dif, all_ones
     return loss, reg_loss, rank_loss, return_ratio
 
