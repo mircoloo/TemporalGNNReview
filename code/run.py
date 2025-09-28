@@ -87,7 +87,7 @@ def main(args: argparse.Namespace) -> None:
 
     print(f"Original company list length: {len(company_list)}")
     print(f"Filtered company list length: {len(filtered_company_list)}")
-    norm_method = 'zscore'
+    norm_method = args.norm.lower() if args.norm else ''
     # Build or retrieve the datasets
     print("-" * 5, "Building train dataset...", "-" * 5)
     train_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, train_sedate[0], train_sedate[1], window_size, 'Train', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate)
@@ -109,7 +109,7 @@ def main(args: argparse.Namespace) -> None:
     # ------------------ 5. TRAIN AND TEST THE MODEL USING THE RUNNER ------------------s
     #model_orchestrator( args.model, model_param )
     if args.model == 'dgdnn':
-        print("GraphWaveNet model selected. Running training and evaluation pipeline.")
+        print("DGDNN model selected. Running training and evaluation pipeline.")
         DGDNN = load_model('DGDNN')
         model_param = model_param['DGDNN']
         model_DGDNN = DGDNN(
@@ -161,6 +161,7 @@ def main(args: argparse.Namespace) -> None:
         GWN = load_model('GraphWaveNet')
         model_param = model_param['GraphWaveNet']
         
+        
         # Prepare model config
         model_config = {
             'num_nodes': num_nodes,
@@ -185,40 +186,40 @@ def main(args: argparse.Namespace) -> None:
 
         runner = GraphWaveNetRunner(model_GWN, device, market_name)
         print(f"Model parameters: {sum([p.numel() for p in model_GWN.parameters()]):,}")
-
+        print(f"Creating GraphWaveNet model with parameters: {model_param}")
+        print(f"Learning rate: {train_param['learning_rate']}, weight decay: {train_param['weight_decay']}")
+        print(f"Batch size: {batch_size}, Epochs: {train_param['epochs']}")
         # Training setup
-        optimizer = optim.Adam(model_GWN.parameters(), lr=0.001, weight_decay=0.0001)
+        optimizer = optim.Adam(model_GWN.parameters(), lr=train_param['learning_rate'], weight_decay=train_param['weight_decay'])
         criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([.8]).to(device))
-        num_epochs = train_param.get('epochs', 100)  
-        batch_size = batch_size
-
-
-        runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, window_size, n_features, batch_size=batch_size, threshold=.7)
+        runner.train(train_dataset, validation_dataset, optimizer, criterion, train_param['epochs'], window_size, n_features, batch_size=batch_size, threshold=.5)
         print("✅ Training finished.")
-
         print("\n" + "="*10 + " TESTING " + "="*10)
-        y_pred, y_true = runner.test(test_dataset, window_size, n_features, batch_size=batch_size, config=model_config)
+        runner.test(test_dataset, window_size, n_features, batch_size=batch_size, config=model_config)
     elif args.model == 'darnn':
         from model_runners.darnn_runner import DARNNRunner
         MultiStockDARNN = load_model('DARNN')
+        model_param = model_param['DARNN']
+        print(f"Creating DARNN model with parameters: {model_param}")
         model_DARNN = MultiStockDARNN(
             N = num_nodes,
-            M = 64,
-            P = 64,
+            M = model_param['M'],
+            P = model_param['P'],
             T=window_size-1,
             num_stocks=num_nodes,
             device=device
         ).to(device)
 
         print(f"Model parameters: {sum([p.numel() for p in model_DARNN.parameters()]):,}")
+        print(f"Learning rate: {train_param['learning_rate']}, weight decay: {train_param['weight_decay']}")
+        print(f"Batch size: {batch_size}, Epochs: {train_param['epochs']}")
         runner = DARNNRunner(model_DARNN, device, market_name)
         optimizer = optim.Adam(model_DARNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
         criterion = nn.BCEWithLogitsLoss()
         runner.train(train_dataset, validation_dataset, optimizer, criterion, train_param['epochs'], seq_length=window_size)
-        runner.test(test_dataset, seq_length=window_size-1, num_features=5)
+        runner.test(test_dataset)
 
     elif args.model == 'hyperstockgat':
-        from model_runners.hyperstockgat_runner import HyperStockGATRunner
         NCModel = load_model('hyperstockgat')
         
         args = argparse.Namespace(
@@ -235,9 +236,9 @@ def main(args: argparse.Namespace) -> None:
             r=1e-3,
             a=10,
             gpu=0,
-            emb_file='NASDAQ_rank_lstm_seq-16_unit-64_2.csv.npy',
-            rel_name='sector_industry',
-            inner_prod=0,
+            #emb_file='NASDAQ_rank_lstm_seq-16_unit-64_2.csv.npy',
+            #rel_name='sector_industry',
+            #inner_prod=0,
             lr=0.001,
             dropout=0.2,
             model='HGCN',
@@ -283,7 +284,7 @@ def main(args: argparse.Namespace) -> None:
 
         model_HSG = NCModel(args).to(device)
 
-        runner = HyperStockGATRunner(model_HSG, device, market_name)
+        runner = HyperStockGATRunner(model_HSG, device, market_name) 
         print(f"Model parameters: {sum([p.numel() for p in model_HSG.parameters()]):,}")
         print("Model created successfully:")
 
@@ -321,6 +322,14 @@ if __name__ == '__main__':
         required=True,
         choices=['nasdaq', 'nyse', 'sse'],
         help="The stock market to process (e.g., 'nasdaq', 'nyse', 'sse'). This name is used to find the corresponding config and tickers file."
+    )
+
+    parser.add_argument(
+        '--norm',
+        type=str,
+        required=True,
+        choices=['zscore', 'minmax', ''],
+        help="The normalization technique to apply (e.g., 'zscore', 'minmax')."
     )
 
     # Parse the command-line arguments
