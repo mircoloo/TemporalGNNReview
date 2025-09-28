@@ -112,7 +112,7 @@ class DARNNRunner(BaseModelRunner):
 
     
     @evaluate_decorator
-    def test(self, test_dataset, criterion):
+    def test(self, test_dataset):
         test_dataset = DARNNDataset(test_dataset)  
         test_loader = DataLoader(test_dataset, batch_size=1)
         self.model.eval()

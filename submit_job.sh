@@ -1,13 +1,14 @@
 #!/bin/bash
 
 # Check input
-if [ "$#" -ne 2 ]; then
+if [ "$#" -ne 3 ]; then
     echo "Usage: $0 <market> <model>"
     exit 1
 fi
 
 market=$1
 model=$2
+normalization=$3
 
 # Directory for generated slurm scripts and logs
 mkdir -p code/sbatch_outputs
@@ -20,9 +21,9 @@ slurm_file="code/sbatch_scripts/${market}_${model}.slurm"
 cat <<EOF > "$slurm_file"
 #!/bin/bash -l
 
-#SBATCH --job-name=${market}_${model}_train
-#SBATCH --output=code/sbatch_outputs/${market}_${model}.out
-#SBATCH --error=code/sbatch_outputs/${market}_${model}.err
+#SBATCH --job-name=${market}_${model}_${normalization}_train
+#SBATCH --output=code/sbatch_outputs/${market}_${model}_${normalization}.out
+#SBATCH --error=code/sbatch_outputs/${market}_${model}_${normalization}.err
 #SBATCH --mail-user=mirco.bisoffi@studenti.unipd.it
 #SBATCH --partition=allgroups
 #SBATCH --ntasks=1
@@ -34,9 +35,10 @@ echo "Job started on \$(date)"
 echo "Running on nodes: \${SLURM_NODELIST}"
 echo "Market: ${market}"
 echo "Model: ${model}"
+echo "Norm: ${normalization}"
 
 conda activate gpu_env
-python /home/mbisoffi/tests/TemporalGNNReview/code/run.py --market ${market} --model ${model}
+python /home/mbisoffi/tests/TemporalGNNReview/code/run.py --market ${market} --model ${model} --norm ${normalization}
 EOF
 
 # Submit the job

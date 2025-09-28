@@ -33,7 +33,7 @@ class GraphWaveNetRunner(BaseModelRunner):
         val_loader = DataLoader(val_set, batch_size=1)
 
         best_val_loss = float('inf')
-        for epoch in range(num_epochs):
+        for epoch in range(1, num_epochs+1):
             self.model.train()
             train_loss = 0.0
             n_train = 0
@@ -83,7 +83,7 @@ class GraphWaveNetRunner(BaseModelRunner):
                         y = y.squeeze()
                         #print(f"Validation batch x.shape: {x.shape}, y.shape: {y.shape}, outputs.shape: {outputs.shape}, predict.shape: {predict.shape}, targets.shape: {targets.shape}")
                         # Compute metrics for batch
-                        print(f"{outputs.shape=}, {targets.shape=}")
+                        #print(f"{outputs.shape=}, {targets.shape=}")
                         val_metrics['loss'] += criterion(outputs, targets).item()
                         
                         # Convert predictions to binary

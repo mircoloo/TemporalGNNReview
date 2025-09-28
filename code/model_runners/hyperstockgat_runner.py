@@ -34,24 +34,26 @@ class HyperStockGATRunner(BaseModelRunner):
             total_samples = 0
             for batch in train_loader:
                 x, y, adj = batch
-                y = y.squeeze(0) # remove the batch dimension
+                #y = y.squeeze(0) # remove the batch dimension
                 #x, y, adj = self._convert_data(batch, seq_length, num_features, batch.x.shape[0])
                 x, y, adj = x.to(self.device), y.to(self.device), adj.to(self.device)
-                print(f"hyperstockgat input x.shape: {x.shape}, adj.shape: {adj.shape}, y.shape: {y.shape}")
+                #print(f"hyperstockgat input x.shape: {x.shape}, adj.shape: {adj.shape}, y.shape: {y.shape}")
                 optimizer.zero_grad()
                 emb = self.model.encode(x, adj)
-                print(f"Embedding {emb.shape}")
                 output = self.model.decode(emb, adj)
                 loss = criterion(output, y)
                 loss.backward()
                 optimizer.step()
+                if torch.isnan(loss):
+                    print(f"NaN loss encountered, stopping training for output:{output} and y:{y} ")
+                    return
 
                 train_loss += loss.item()
                 total_samples += 1
-
-            avg_train_loss = train_loss / max(total_samples, 1)
+            print(f"types: {type(train_loss)=} {type(total_samples)=} | {train_loss=}, {total_samples=}")
+            avg_train_loss = train_loss / float(max(total_samples, 1))
             print(f"[Epoch {epoch}] Train Loss: {avg_train_loss:.4f}")
-
+            raise
             # Run validation every epoch
 
             self.evaluate(val_loader, criterion, seq_length, num_features)

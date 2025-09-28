@@ -24,10 +24,7 @@ class Encoder(nn.Module):
     def encode(self, x, adj):
         if self.encode_graph:
             input = (x, adj.squeeze())  
-            print(f"Encoder encode input {x.shape=} {adj.squeeze().shape=}")
             output, _ = self.layers.forward(input)
-            print(f"{self.layers.forward}")
-            print(f"Output shape after layers: {output.shape}")
         else:
             output = self.layers.forward(x)
         return output
@@ -163,7 +160,6 @@ class HGCN(Encoder):
         self.encode_graph = True
         self.time_conv = nn.Conv2d(int(args.feat_dim), int(args.feat_dim), kernel_size=(1, 3), stride=(1,  1), padding=(0, 1)) #changed to feat_dim from args.l
         self.time_conv2 = nn.Conv2d(int(args.feat_dim), int(args.feat_dim), kernel_size=(1, 3), stride=(1,  1), padding=(0, 1))
-        print(f"Self.layers: {self.layers}  ")
     def encode(self, x, adj):
         """
         args: x: (N, F, T) where N is the number of nodes, F is the number of features, T is the number of time steps
@@ -171,17 +167,20 @@ class HGCN(Encoder):
         
         """
         #x = x.unsqueeze(0) #add the batch dimension
-        print(f"In HCGN encoder input {x.shape=} {adj.shape=}")
+        
+
         x = x.permute(0,1,3,2) # (B, N, F, T)
         batch_size, num_of_vertices, num_of_features, num_of_timesteps = x.shape
-        print(f"batch_size: {batch_size}, num_of_vertices: {num_of_vertices}, num_of_features: {num_of_features}, num_of_timesteps: {num_of_timesteps}  ")
+        #print(f"batch_size: {batch_size}, num_of_vertices: {num_of_vertices}, num_of_features: {num_of_features}, num_of_timesteps: {num_of_timesteps}  ")
+        
         temporal_At = self.tat(x)
-        print(f"temporal_At shape: {temporal_At.shape}" )
+        #print(f"temporal_At shape: {temporal_At.shape}" )
+        
         x_TAt = torch.matmul(x.reshape(batch_size, -1, num_of_timesteps), temporal_At).reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
-        print(f"x_TAt before conv {x_TAt.shape=}")
-        print(f"self.time_conv weight shape: {self.time_conv.weight.shape}, bias shape: {self.time_conv.bias.shape}")
+        #print(f"x_TAt before conv {x_TAt.shape=}")
+        #print(f"self.time_conv weight shape: {self.time_conv.weight.shape}, bias shape: {self.time_conv.bias.shape}")
         x_TAt_conved = self.time_conv(x_TAt.permute(0, 2, 1, 3))
-        print(f"x_TAt_conved shape: {x_TAt_conved.shape}")
+        #print(f"x_TAt_conved shape: {x_TAt_conved.shape}")
         x_TAt = x_TAt_conved.reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
         # (B, N, F, T) -> (B, F, N, T)
         outputs = []
@@ -191,11 +190,10 @@ class HGCN(Encoder):
             x_tan = self.manifold.proj_tan0(y, self.curvatures[0])
             x_hyp = self.manifold.expmap0(x_tan, c=self.curvatures[0])
             x_hyp = self.manifold.proj(x_hyp, c=self.curvatures[0])
-            print(f"y shape: {y.shape}, x_tan shape: {x_tan.shape}, x_hyp shape: {x_hyp.shape}")
+            #print(f"y shape: {y.shape}, x_tan shape: {x_tan.shape}, x_hyp shape: {x_hyp.shape}")
             temp = super(HGCN, self).encode(x_hyp, adj)
             outputs.append(temp.reshape(1,num_of_vertices,6))
-        
-        print(f"outputs length: {len(outputs)}")
+        #print(f"outputs length: {len(outputs)}")
         spatial_At = torch.stack(outputs).permute(1, 0, 2, 3)
         h = spatial_At.permute(0, 2, 3, 1)
         batch_size, num_of_vertices, num_of_features, num_of_timesteps = h.shape

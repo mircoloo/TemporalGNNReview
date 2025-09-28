@@ -104,13 +104,13 @@ class Hyperboloid(Manifold):
         K = 1. / c
         sqrtK = K ** 0.5
         d = x.size(-1) - 1 # dimension of the manifold
-        print(f"{x.shape=} {c.shape=} {d=} {x.narrow(-1, 0, 1).shape=}")
-        y = x.narrow(-1, 1, d).view(-1, d) 
+        y = x.narrow(-1, 1, d).reshape(-1, d) # take the firsts d components and reshape to (N*T, F)
         y_norm = torch.norm(y, p=2, dim=1, keepdim=True)
         y_norm = torch.clamp(y_norm, min=self.min_norm)
         res = torch.zeros_like(x)
         theta = torch.clamp(x[:, 0:1] / sqrtK, min=1.0 + self.eps[x.dtype])
         res[:, 1:] = sqrtK * arcosh(theta) * y / y_norm
+
         return res
 
     def mobius_add(self, x, y, c):
