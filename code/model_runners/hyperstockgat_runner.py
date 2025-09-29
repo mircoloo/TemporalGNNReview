@@ -28,7 +28,7 @@ class HyperStockGATRunner(BaseModelRunner):
         train_loader = DataLoader(train_set, batch_size=1, shuffle=True)
         val_loader = DataLoader(validation_set, batch_size=1)
 
-        for epoch in range(epochs):
+        for epoch in range(1,epochs+1):
             self.model.train()
             train_loss = 0.0
             total_samples = 0
@@ -45,15 +45,13 @@ class HyperStockGATRunner(BaseModelRunner):
                 loss.backward()
                 optimizer.step()
                 if torch.isnan(loss):
-                    print(f"NaN loss encountered, stopping training for output:{output} and y:{y} ")
+                    print(f"For x:{x},\n\n adj:{adj},\n\n y:{y}, \n\n output:{output}")
                     return
-
                 train_loss += loss.item()
                 total_samples += 1
-            print(f"types: {type(train_loss)=} {type(total_samples)=} | {train_loss=}, {total_samples=}")
             avg_train_loss = train_loss / float(max(total_samples, 1))
             print(f"[Epoch {epoch}] Train Loss: {avg_train_loss:.4f}")
-            raise
+            
             # Run validation every epoch
 
             self.evaluate(val_loader, criterion, seq_length, num_features)
@@ -88,8 +86,6 @@ class HyperStockGATRunner(BaseModelRunner):
                 # This method (_convert_data) should handle any necessary restructuring,
                 # including potentially extracting/processing adjacency matrices if required by the model.
                 x, y, adj = val_data
-                
-                y = y.squeeze(0) # remove the batch dimension
                 x, y, adj = x.to(self.device), y.to(self.device), adj.to(self.device)
                 
                 # Move input and target tensors to the specified device (CPU/GPU)
