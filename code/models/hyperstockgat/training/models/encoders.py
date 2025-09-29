@@ -93,11 +93,27 @@ class GCN(Encoder):
 class Temporal_Attention_layer(nn.Module):
     def __init__(self, in_channels, num_of_vertices, num_of_timesteps):
         super(Temporal_Attention_layer, self).__init__()
-        self.U1 = nn.Parameter(torch.FloatTensor(num_of_vertices)) # N
-        self.U2 = nn.Parameter(torch.FloatTensor(in_channels, num_of_vertices)) # F x N
-        self.U3 = nn.Parameter(torch.FloatTensor(in_channels)) # F
-        self.be = nn.Parameter(torch.FloatTensor(1, num_of_timesteps, num_of_timesteps)) # 1 x T x T
-        self.Ve = nn.Parameter(torch.FloatTensor(num_of_timesteps, num_of_timesteps)) # T x T
+        # self.U1 = nn.Parameter(torch.FloatTensor(num_of_vertices)) # N
+        # self.U2 = nn.Parameter(torch.FloatTensor(in_channels, num_of_vertices)) # F x N
+        # self.U3 = nn.Parameter(torch.FloatTensor(in_channels)) # F
+        # self.be = nn.Parameter(torch.FloatTensor(1, num_of_timesteps, num_of_timesteps)) # 1 x T x T
+        # self.Ve = nn.Parameter(torch.FloatTensor(num_of_timesteps, num_of_timesteps)) # T x T
+        self.U1 = nn.Parameter(torch.empty(num_of_vertices))
+        nn.init.xavier_uniform_(self.U1.unsqueeze(0))  # expand to 2D for Xavier, then squeeze back
+
+        self.U2 = nn.Parameter(torch.empty(in_channels, num_of_vertices))
+        nn.init.xavier_uniform_(self.U2)
+
+        self.U3 = nn.Parameter(torch.empty(in_channels))
+        nn.init.xavier_uniform_(self.U3.unsqueeze(0))  # same trick as U1
+
+        self.be = nn.Parameter(torch.empty(1, num_of_timesteps, num_of_timesteps))
+        nn.init.zeros_(self.be)  # often good to start biases at 0
+
+        self.Ve = nn.Parameter(torch.empty(num_of_timesteps, num_of_timesteps))
+        nn.init.xavier_uniform_(self.Ve)
+
+
 
     def forward(self, x):
         '''

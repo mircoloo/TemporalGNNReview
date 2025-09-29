@@ -121,7 +121,6 @@ class DARNNRunner(BaseModelRunner):
         
         with torch.no_grad():
             for batch in test_loader:
-                batch = batch.to(self.device)
                 X, y_target, target = batch  # Assuming your dataset returns (x, y)
                 
                 # Move batch to device
