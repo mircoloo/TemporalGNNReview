@@ -47,7 +47,7 @@ class HyperStockGATDataset(BaseGraphDataset):
         # Write specifit reshape code
         x = x.reshape((self.n_nodes, self.n_features, self.seq_length)).permute(0,2,1)
         adj = to_dense_adj(edge_index=data_sample.edge_index, edge_attr=data_sample.edge_attr).squeeze() #create adjacency list
-        y =  torch.tensor(data_sample.y.clone().detach(), dtype=torch.float32).unsqueeze(1)
+        y = data_sample.y.clone().detach().float().unsqueeze(1)
         return x, y, adj
 
 
