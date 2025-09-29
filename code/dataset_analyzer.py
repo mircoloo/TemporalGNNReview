@@ -209,6 +209,105 @@ class MarketAnalyzer():
         homophily_score = according_edges / total_edges if total_edges > 0 else 0.0
         return homophily_score
     
+    def get_feature_timeseries(self, stock_ticker=None, feature='Close', num_snapshots=None):
+        """
+        Extract time series data for a specific feature across snapshots.
+        
+        Args:
+            stock_ticker: Specific stock to analyze (None for all stocks)
+            feature: Feature to analyze ('Close', 'Open', etc.)
+            num_snapshots: Number of snapshots to include (None for all)
+            
+        Returns:
+            DataFrame with time series data
+        """
+        if feature not in self.features:
+            raise ValueError(f"Feature {feature} not found. Available features: {self.features}")
+        
+        timeseries_data = []
+        stock_idx = self.stock_to_index.get(stock_ticker) if stock_ticker else None
+        
+        snapshots_to_use = self.graph_snapshots[:num_snapshots] if num_snapshots else self.graph_snapshots
+        
+        for snapshot_idx, snapshot in enumerate(snapshots_to_use):
+            x = snapshot.x  # [num_nodes, time_steps, features] or [num_nodes, features]
+            
+            # Handle different data shapes
+            if x.dim() == 3:
+                # Take the last time step for features
+                feature_values = x[:, -1, self.features.index(feature)].numpy()
+            else:
+                feature_values = x[:, self.features.index(feature)].numpy()
+                
+            if stock_idx is not None:
+                # Single stock
+                timeseries_data.append({
+                    'snapshot': snapshot_idx,
+                    'value': feature_values[stock_idx],
+                    'ticker': stock_ticker
+                })
+            else:
+                # All stocks
+                for node_idx in range(len(feature_values)):
+                    ticker = self.index_to_stock.get(node_idx, f"Node_{node_idx}")
+                    timeseries_data.append({
+                        'snapshot': snapshot_idx,
+                        'value': feature_values[node_idx],
+                        'ticker': ticker
+                    })
+        
+        return pd.DataFrame(timeseries_data)
+
+    def calculate_derived_features(self, df=None):
+        """
+        Calculate derived features from raw features.
+        
+        Args:
+            df: Feature DataFrame (if None, will call analyze_node_features())
+            
+        Returns:
+            DataFrame with additional derived features
+        """
+        if df is None:
+            df = self.analyze_node_features()
+        
+        # Group by ticker and snapshot_idx to perform calculations
+        result = df.copy()
+        
+        # Only calculate if we have multiple features
+        if 'High' in df.columns and 'Low' in df.columns:
+            # Calculate volatility (High-Low range)
+            result['volatility'] = df['High'] - df['Low']
+            
+        if 'Close' in df.columns and 'Open' in df.columns:
+            # Calculate daily return
+            result['daily_return'] = (df['Close'] - df['Open']) / df['Open']
+            
+        if 'Volume' in df.columns and 'Close' in df.columns:
+            # Calculate volume-price ratio
+            result['volume_price_ratio'] = df['Volume'] / df['Close']
+        
+        return result
+
+    def get_sector_mapping(self):
+        """
+        Mock function to create sector mapping for stocks.
+        In a real implementation, this would load actual sector data.
+        
+        Returns:
+            Dictionary mapping tickers to sectors
+        """
+        # This is a placeholder - in real implementation you'd load actual sector data
+        import random
+        sectors = ['Technology', 'Finance', 'Healthcare', 'Consumer', 'Energy', 'Utilities']
+        
+        sector_map = {}
+        for ticker in self.index_to_stock.values():
+            # Randomly assign sectors for demonstration
+            sector_map[ticker] = random.choice(sectors)
+            
+        return sector_map
+    
 
 def main():
     pass
