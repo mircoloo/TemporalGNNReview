@@ -338,7 +338,7 @@ class MyDataset(Dataset):
     def _load_norm_params(self):
         """Load normalization parameters from file."""
         if self.norm_params_path.exists():
-            self.norm_params = torch.load(self.norm_params_path)
+            self.norm_params = torch.load(self.norm_params_path, weights_only=False)
             num_stocks = len(self.norm_params['stock_params']) if 'stock_params' in self.norm_params else 0
             return True
         else:
