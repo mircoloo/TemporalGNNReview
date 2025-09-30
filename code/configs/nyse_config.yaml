@@ -59,6 +59,9 @@ model_params:
     addaptadj: false
     dropout: 0.3
 
+DARNN:
+    M: 64
+    P: 64
 # -----------------------------------------------------------------
 
 # Parameters for the training process

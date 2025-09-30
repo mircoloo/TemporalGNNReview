@@ -2,7 +2,7 @@
 
 # Check input
 if [ "$#" -ne 3 ]; then
-    echo "Usage: $0 <market> <model>"
+    echo "Usage: $0 <market> <model> <normalization>"
     exit 1
 fi
 
