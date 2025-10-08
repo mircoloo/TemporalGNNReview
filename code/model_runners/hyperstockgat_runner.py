@@ -77,15 +77,8 @@ class HyperStockGATRunner(BaseModelRunner):
         all_targets = []
 
         with torch.no_grad(): # Disable gradient calculations for inference
-            for val_data in val_loader:
-                # Check if val_data.x exists and has the expected shape for features.
-                # This handles cases where samples might be malformed or filtered.
-
-
-                # Convert raw data from val_data object into x_val and y_val tensors.
-                # This method (_convert_data) should handle any necessary restructuring,
-                # including potentially extracting/processing adjacency matrices if required by the model.
-                x, y, adj = val_data
+            for batch in val_loader:
+                x, y, adj = batch
                 x, y, adj = x.to(self.device), y.to(self.device), adj.to(self.device)
                 
                 # Move input and target tensors to the specified device (CPU/GPU)
@@ -94,14 +87,6 @@ class HyperStockGATRunner(BaseModelRunner):
                 val_loss = criterion(val_outputs, y)
 
                 # Perform the forward pass through the model
-
-                # Adjust output shape:
-                # - .squeeze(0).squeeze(0) removes any batch or singleton dimensions if they exist,
-                #   resulting in a shape like [num_nodes] or [num_nodes, 1].
-                # - val_outputs[:, -1] is used if the model's output is a sequence (e.g., [num_nodes, sequence_len])
-                #   and you only need the prediction from the last time step.
-                val_outputs = val_outputs.squeeze(0).squeeze(0)
-                val_outputs = val_outputs[:, -1] if val_outputs.dim() == 2 else val_outputs
 
                 # Calculate the loss for the current batch
                 # y_val.float() ensures the target labels are float, which is required by common loss functions
@@ -115,8 +100,8 @@ class HyperStockGATRunner(BaseModelRunner):
                 preds = (torch.sigmoid(val_outputs) > 0.5).long()
                 # Collect predictions and true labels for overall metric calculation later
                 # Move to CPU before appending as scikit-learn metrics typically operate on CPU numpy arrays/tensors.
-                all_preds.append(preds.cpu())
-                all_targets.append(y.cpu())
+                all_preds.append(preds.squeeze().cpu())
+                all_targets.append(y.squeeze().cpu())
 
         # --- After iterating through all batches ---
         # Concatenate all collected predictions and targets into single tensors
@@ -128,6 +113,7 @@ class HyperStockGATRunner(BaseModelRunner):
             avg_val_loss = total_val_loss / len(all_preds)
 
             # Calculate various classification metrics using scikit-learn
+            print(y_true, "\n", y_pred)
             acc = accuracy_score(y_true, y_pred)
             f1 = f1_score(y_true, y_pred, average='weighted') # 'weighted' considers label imbalance
             mcc = matthews_corrcoef(y_true, y_pred)

@@ -190,6 +190,17 @@ class MarketAnalyzer():
     def get_snapshots_info_df(self) -> pd.DataFrame:
         return pd.DataFrame(self.get_snapshots_info())
 
+    def get_degree_dist(self):
+        """
+        Calculate the degree distribution for all snapshots.
+        """
+        degrees = []
+        adj_matrices = self.get_snapshots_adjacency_matrix()
+        for adj in adj_matrices:
+            deg = np.sum(adj, axis=1)
+            degrees.extend(deg)
+        return degrees
+
     def get_homophily_score(self, snapshot_index: int) -> float:
         """
         Calculate the homophily score for a given snapshot index.
@@ -247,7 +258,7 @@ class MarketAnalyzer():
                     'ticker': stock_ticker
                 })
             else:
-                # All stocks
+                    # All stocks
                 for node_idx in range(len(feature_values)):
                     ticker = self.index_to_stock.get(node_idx, f"Node_{node_idx}")
                     timeseries_data.append({
@@ -288,25 +299,6 @@ class MarketAnalyzer():
             result['volume_price_ratio'] = df['Volume'] / df['Close']
         
         return result
-
-    def get_sector_mapping(self):
-        """
-        Mock function to create sector mapping for stocks.
-        In a real implementation, this would load actual sector data.
-        
-        Returns:
-            Dictionary mapping tickers to sectors
-        """
-        # This is a placeholder - in real implementation you'd load actual sector data
-        import random
-        sectors = ['Technology', 'Finance', 'Healthcare', 'Consumer', 'Energy', 'Utilities']
-        
-        sector_map = {}
-        for ticker in self.index_to_stock.values():
-            # Randomly assign sectors for demonstration
-            sector_map[ticker] = random.choice(sectors)
-            
-        return sector_map
     
 
 def main():

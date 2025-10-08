@@ -59,15 +59,15 @@ model_params:
     addaptadj: false
     dropout: 0.3
 
-DARNN:
-    M: 64
-    P: 64
+  DARNN:
+      M: 64
+      P: 64
 # -----------------------------------------------------------------
 
 # Parameters for the training process
 training_params:
   learning_rate: 2e-4      # From paper: 2e-4
   weight_decay: 1.5e-5     # From paper: 1.5e-5
-  epochs: 300               # From paper
-  neighbour_radius_coeff: 2.7e-3  # From paper: α = 2.9e-3
-  batch_size: 1            
+  epochs: 300               # From paper 300
+  neighbour_radius_coeff: 2.9e-3  # From paper: α = 2.9e-3
+  batch_size: 1          

@@ -1,5 +1,5 @@
-
-
 from model_runners.dgdnn_runner import DGDNNRunner
 from model_runners.graphwavenet_runner import GraphWaveNetRunner
 from model_runners.hyperstockgat_runner import HyperStockGATRunner
+from model_runners.darnn_runner import DARNNRunner
+from model_runners.dtml_runner import DTMLRunner

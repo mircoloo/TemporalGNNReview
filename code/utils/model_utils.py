@@ -25,6 +25,9 @@ def load_model(model_name):
         elif model_name == 'HyperStockGAT':
             from models.HyperStockGAT.training.models.base_models import NCModel
             return NCModel
+        elif model_name == 'DTML':
+            from models.DTML.DTML import DTML
+            return DTML
         else:
             raise ValueError(f"Unknown model: {model_name}")
     except ImportError as e:

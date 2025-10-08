@@ -190,14 +190,13 @@ def main(args: argparse.Namespace) -> None:
         print(f"Learning rate: {train_param['learning_rate']}, weight decay: {train_param['weight_decay']}")
         print(f"Batch size: {batch_size}, Epochs: {train_param['epochs']}")
         # Training setup
-        optimizer = optim.Adam(model_GWN.parameters(), lr=train_param['learning_rate'], weight_decay=train_param['weight_decay'])
+        optimizer = optim.Adam(model_GWN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
         criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([.8]).to(device))
         runner.train(train_dataset, validation_dataset, optimizer, criterion, train_param['epochs'], window_size, n_features, batch_size=batch_size, threshold=.5)
         print("✅ Training finished.")
         print("\n" + "="*10 + " TESTING " + "="*10)
         runner.test(test_dataset, window_size, n_features, batch_size=batch_size, config=model_config)
     elif args.model == 'darnn':
-        from model_runners.darnn_runner import DARNNRunner
         MultiStockDARNN = load_model('DARNN')
         model_param = model_param['DARNN']
         print(f"Creating DARNN model with parameters: {model_param}")
@@ -218,6 +217,25 @@ def main(args: argparse.Namespace) -> None:
         criterion = nn.BCEWithLogitsLoss()
         runner.train(train_dataset, validation_dataset, optimizer, criterion, train_param['epochs'], seq_length=window_size)
         runner.test(test_dataset)
+    
+    elif args.model == 'dtml':
+        model_DTML = load_model('DTML')
+        model_param = model_param['DTML']
+        print(f"Creating DTML model with parameters: {model_param}")
+        model_DTML = model_DTML(
+            input_size=n_features,
+            hidden_size=model_param['hidden_size'],
+            num_layers=model_param['num_layers'],
+            n_heads=model_param['n_heads'],
+            beta=model_param['beta'],
+            drop_rate=model_param['drop_rate']
+        ).to(device)
+
+        print(f"Model parameters: {sum([p.numel() for p in model_DTML.parameters()]):,}")
+        print(f"Learning rate: {train_param['learning_rate']}, weight decay: {train_param['weight_decay']}")
+        print(f"Batch size: {batch_size}, Epochs: {train_param['epochs']}")
+        runner = DTMLRunner(model_DTML, device, market_name)
+
 
     elif args.model == 'hyperstockgat':
         NCModel = load_model('hyperstockgat')
@@ -313,7 +331,7 @@ if __name__ == '__main__':
     parser.add_argument('--model', 
                         type=str, 
                         required=True, 
-                        choices=['dgdnn', 'graphwavenet', 'darnn', 'hyperstockgat'],
+                        choices=['dgdnn', 'graphwavenet', 'darnn', 'hyperstockgat', 'dtml'],
                         help="The model to run.) #Choose from 'dgdnn', 'graphwavenet', 'darnn', or 'hyperstockgat'.")
     # Add the required --market argument
     parser.add_argument(
@@ -328,7 +346,7 @@ if __name__ == '__main__':
         '--norm',
         type=str,
         required=True,
-        choices=['zscore', 'minmax', ''],
+        choices=['zscore', 'minmax', 'log1p'],
         help="The normalization technique to apply (e.g., 'zscore', 'minmax')."
     )
 
