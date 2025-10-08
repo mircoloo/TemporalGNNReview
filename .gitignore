@@ -18,6 +18,7 @@ Thumbs.db
 *.sublime-*
 
 # Directories
+/code/notebooks/thesis_figures
 /code/data/*
 !code/data/geometric_dataset_gen.py
 /code/tesi_venv/

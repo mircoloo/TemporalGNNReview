@@ -1,14 +1,15 @@
 #!/bin/bash
 
 # Check input
-if [ "$#" -ne 3 ]; then
-    echo "Usage: $0 <market> <model> <normalization>"
+if [ "$#" -ne 4 ]; then
+    echo "Usage: $0 <market> <model> <normalization> <adjnorm>"
     exit 1
 fi
 
 market=$1
 model=$2
 normalization=$3
+adjnorm=$4
 
 # Directory for generated slurm scripts and logs
 mkdir -p code/sbatch_outputs
@@ -36,9 +37,10 @@ echo "Running on nodes: \${SLURM_NODELIST}"
 echo "Market: ${market}"
 echo "Model: ${model}"
 echo "Norm: ${normalization}"
+echo "Adj norm: ${adjnorm}"
 
 conda activate gpu_env
-python /home/mbisoffi/tests/TemporalGNNReview/code/run.py --market ${market} --model ${model} --norm ${normalization}
+python /home/mbisoffi/tests/TemporalGNNReview/code/run.py --market ${market} --model ${model} --norm ${normalization} --adjnorm ${adjnorm}
 EOF
 
 # Submit the job

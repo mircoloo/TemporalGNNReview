@@ -4,7 +4,6 @@ import torch
 from sklearn.metrics import f1_score, matthews_corrcoef, accuracy_score, mean_absolute_error, mean_squared_error, precision_score, recall_score
 from model_runners.runner_utils import BaseGraphDataset
 from torch_geometric.loader import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 from model_runners.models_dataset import DARNNDataset
 

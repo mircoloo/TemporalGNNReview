@@ -26,7 +26,8 @@ class MyDataset(Dataset):
                  dataset_type: str, 
                  fast_approx, 
                  normalize_method: str = '',
-                 train_dates: List[str] = ''):
+                train_dates: List[str] = '',
+                minmax_normalize_adj: bool = True):
         
         super().__init__()
         
@@ -45,6 +46,15 @@ class MyDataset(Dataset):
         self.window = window
         self.normalize_method = normalize_method
         self.global_data_search_cutoff = '2025-07-05'
+
+
+        #params for minmax normalizing adj matrix
+        self.minmax_normalize_adj = minmax_normalize_adj
+        self.adj_min = torch.inf
+        self.adj_max = -torch.inf
+
+        
+
 
         self.dataset_type = dataset_type #(train, test, val)
         self.fast_approx = fast_approx
@@ -72,16 +82,24 @@ class MyDataset(Dataset):
         # 4 Define path for normalization parameters
         self.norm_params = {}
         # 5 Find train dataset's normalization parameters path
-        train_dir = self.desti / f'{market}_Train_{train_dates[0]}_{train_dates[1]}_{window}{f"_{self.normalize_method}" if self.normalize_method else ""}'
-        self.norm_params_path = train_dir / 'norm_params.pt'
-        
+        self.train_dir = self.desti / f'{market}_Train_{train_dates[0]}_{train_dates[1]}_{window}{f"_{self.normalize_method}" if self.normalize_method else ""}'
+        self.norm_params_path = self.train_dir / 'norm_params.pt'
+        self.adj_minmax_path = self.train_dir / 'adj_minmax.pt'
 
 
         # This will be False only one snapshot graph file or mapping file is missing
         graph_files_exist = all((self.directory_path / f'graph_{i}.pt').exists() for i in range(len(self.dates) - window + 1))
         mapping_file_exists = self.index_mapping_path.exists()
+
         
-        # 6 Create graphs only if they don't already exist
+        if self.minmax_normalize_adj:
+            if self.train_dir.exists() and (self.adj_minmax_path).exists():
+                print("Loading Min-Max normalizing adjacency matrix")
+                adj_data = torch.load(self.adj_minmax_path)
+                self.adj_min = adj_data['adj_min']
+                self.adj_max = adj_data['adj_max']
+
+        # 6 Create graphs only if they don't already exist
         if not graph_files_exist or not mapping_file_exists:
             if self.dates and len(self.dates) >= self.window + 1 and self.company_list:
                 # For normalization that requires statistics
@@ -89,9 +107,11 @@ class MyDataset(Dataset):
                     # For training set, compute and save parameters
                     if self.dataset_type.lower() == 'train':
                         # Create norm_params directory if it doesn't exist
-                        train_dir.mkdir(parents=True, exist_ok=True)
+                        self.train_dir.mkdir(parents=True, exist_ok=True)
                         # Compute stock-level normalization parameters
                         self._compute_stock_norm_params()
+
+                        
                     # For validation and test sets, check if parameters exist
                     elif self.dataset_type.lower() in ['val', 'test']:
                         if not self.norm_params_path.exists():
@@ -122,6 +142,12 @@ class MyDataset(Dataset):
         data_path = self.directory_path / f'graph_{idx}.pt'
         if data_path.exists():
             sample = torch.load(data_path, weights_only=False)
+            if self.minmax_normalize_adj and self.adj_min != torch.inf and self.adj_max != -torch.inf:
+                # Normalize edge_attr using stored min and max
+                threshold = .004 #to change
+                sample.edge_attr = (sample.edge_attr - self.adj_min) / (self.adj_max - self.adj_min + 1e-9)
+                sample.edge_attr = torch.clamp(sample.edge_attr, 0, 1)  # Ensure values are within [0, 1]
+                sample.edge_attr[sample.edge_attr < threshold] = 0  # Thresholding to ensure no very small entries
             return sample
         else:
             raise FileNotFoundError(f"No graph data found for index {idx}")
@@ -334,6 +360,15 @@ class MyDataset(Dataset):
         print(f">>> Computed {self.normalize_method} parameters for {num_stocks} stocks")
         print(f">>> Saved to: {self.norm_params_path}")
 
+    def _load_adj_minmax(self, path: Path):
+        if path.exists():
+            adj_params = torch.load(path, weights_only=False)
+            self.adj_min = adj_params.get('adj_min', torch.inf)
+            self.adj_max = adj_params.get('adj_max', -torch.inf)
+            print(f"Loaded adjacency matrix min: {self.adj_min}, max: {self.adj_max} from {path}")
+        else:
+            print(f"Adjacency min-max file not found at {path}. Using default values.")
+
     # Method to load normalization parameters
     def _load_norm_params(self):
         """Load normalization parameters from file."""
@@ -436,17 +471,25 @@ class MyDataset(Dataset):
 
             try:
                 # 11 Create adjacency matrix and convert to edge_index and edge_attr
-                edge_index, edge_attr = dense_to_sparse(self.adjacency_matrix(X_final)) # [N;F*T] -> [N;N] -> edge_index [2;E], edge_attr [E]
+                A = self.adjacency_matrix(X_final)
+                edge_index, edge_attr = dense_to_sparse(A) # [N;F*T] -> [N;N] -> edge_index [2;E], edge_attr [E]
             except Exception as e:
                 print(f"Skipping graph {i} due to adjacency matrix error: {e}")
                 continue
 
             data = Data(x=X_final, edge_index=edge_index, edge_attr=edge_attr, y=C)
             torch.save(data, filename)
-            
+        
         print(f"\n>>> Finished creating {self.dataset_type.upper()} dataset with {len(self.dates) - self.window + 1} graphs")
         print(f">>> Saved to: {self.directory_path}")
-   
+
+        print("Calculating Min-Max normalizing adjacency matrix")
+        for i in tqdm(range(len(self.dates) - self.window + 1)):
+            edges = torch.load(self.directory_path / f'graph_{i}.pt', weights_only=False).edge_attr
+            self.adj_min = min(self.adj_min, edges.min())
+            self.adj_max = max(self.adj_max, edges.max())
+        torch.save({'adj_min': self.adj_min, 'adj_max': self.adj_max}, self.train_dir / 'adj_minmax.pt')
+        print(f"Adjacency matrix min: {self.adj_min}, max: {self.adj_max}")
     
 
     def create_feature_node_timestamp_matrix(self, dates: List[str]) -> torch.Tensor:
@@ -557,11 +600,8 @@ class MyDataset(Dataset):
         #     D_tilde = np.diag(D_tilde_diag)
         #     H = D_tilde @ A_np @ D_tilde
         #     return torch.from_numpy(expm(-t * (np.eye(num_nodes) - H))).float()
-        """ 23/09/2025 - try to return simply A
         A[A < 1] = 1 # Thresholding to ensure no zero entries
         return torch.log(A)
-        """
-        return A
 
     def signal_energy(self, x_tuple: Tuple[float]) -> float:
         """Calculates the signal energy of a given tuple of floats."""

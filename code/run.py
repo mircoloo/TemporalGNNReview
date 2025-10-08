@@ -3,7 +3,6 @@ import argparse
 import sys
 from pathlib import Path
 import os
-from torch.utils.tensorboard import SummaryWriter
 
 from model_runners import *
 import torch
@@ -21,6 +20,7 @@ torch.manual_seed(42)  # For reproducibility
 from utils.dataset_utils import filter_stocks_from_timeperiod, retrieve_company_list
 from data.geometric_dataset_gen import MyDataset as MyGeometricDataset
 from utils.utils import load_model
+
 
 PROJECT_PATH = Path(__file__).parent.resolve()
 
@@ -88,13 +88,14 @@ def main(args: argparse.Namespace) -> None:
     print(f"Original company list length: {len(company_list)}")
     print(f"Filtered company list length: {len(filtered_company_list)}")
     norm_method = args.norm.lower() if args.norm else ''
+    use_adj_norm = False if args.adjnorm=='False' else True
     # Build or retrieve the datasets
     print("-" * 5, "Building train dataset...", "-" * 5)
-    train_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, train_sedate[0], train_sedate[1], window_size, 'Train', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate)
+    train_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, train_sedate[0], train_sedate[1], window_size, 'Train', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate, minmax_normalize_adj=use_adj_norm)
     print("-" * 5, "Building validation dataset...", "-" * 5)
-    validation_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, val_sedate[0], val_sedate[1], window_size, 'Validation', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate)
+    validation_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, val_sedate[0], val_sedate[1], window_size, 'Validation', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate, minmax_normalize_adj=use_adj_norm)
     print("-" * 5, "Building test dataset...", "-" * 5)
-    test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, test_sedate[0], test_sedate[1], window_size, 'Test', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate)
+    test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, test_sedate[0], test_sedate[1], window_size, 'Test', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate, minmax_normalize_adj=use_adj_norm)
 
     num_nodes =len(filtered_company_list)
     features = main_config_yaml["features"]
@@ -264,7 +265,7 @@ def main(args: argparse.Namespace) -> None:
             manifold='Hyperboloid',
             c=1.0,
             cuda=0,
-            epochs=5000,
+            #epochs=5000,
             weight_decay=0.0001,
             optimizer='Adam',
             momentum=0.999,
@@ -322,9 +323,6 @@ def main(args: argparse.Namespace) -> None:
 
 if __name__ == '__main__':
 
-
-    writer = SummaryWriter()
-    writer.close()
     # Create the parser
     parser = argparse.ArgumentParser(description="Train and evaluate a model for a specific stock market.")
 
@@ -348,6 +346,15 @@ if __name__ == '__main__':
         required=True,
         choices=['zscore', 'minmax', 'log1p'],
         help="The normalization technique to apply (e.g., 'zscore', 'minmax')."
+    )
+
+    parser.add_argument(
+        '--adjnorm',
+        type=str,
+        required=False,
+        choices=['True', 'False'],
+        help="Whether to apply adjacency normalization (e.g., 'True', 'False').",
+        default='False'
     )
 
     # Parse the command-line arguments

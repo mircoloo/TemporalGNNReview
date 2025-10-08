@@ -1,9 +1,10 @@
 
-from model_runners.base_runner import BaseModelRunner
-from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, recall_score
+import numpy as np
+from tabulate import tabulate
+from model_runners.base_runner import evaluate_decorator, BaseModelRunner
+from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, precision_score, recall_score
 from torch.utils.data import DataLoader
 from model_runners.runner_utils import BaseGraphDataset
-from torch.utils.tensorboard import SummaryWriter
 import torch
 from model_runners.models_dataset import HyperStockGATDataset
 
@@ -40,13 +41,10 @@ class HyperStockGATRunner(BaseModelRunner):
                 #print(f"hyperstockgat input x.shape: {x.shape}, adj.shape: {adj.shape}, y.shape: {y.shape}")
                 optimizer.zero_grad()
                 emb = self.model.encode(x, adj)
-                output = self.model.decode(emb, adj)
-                loss = criterion(output, y)
+                outputs = self.model.decode(emb, adj)
+                loss = criterion(outputs, y)
                 loss.backward()
                 optimizer.step()
-                if torch.isnan(loss):
-                    print(f"For x:{x},\n\n adj:{adj},\n\n y:{y}, \n\n output:{output}")
-                    return
                 train_loss += loss.item()
                 total_samples += 1
             avg_train_loss = train_loss / float(max(total_samples, 1))
@@ -54,121 +52,90 @@ class HyperStockGATRunner(BaseModelRunner):
             
             # Run validation every epoch
 
-            self.evaluate(val_loader, criterion, seq_length, num_features)
-
-
-
-
-    def evaluate(self, val_loader, criterion, seq_length, num_features, epoch=None, num_epochs=None):
-        """
-        Evaluates the model on the validation set, calculates loss and various classification metrics.
-
-        Args:
-            val_loader (torch.utils.data.DataLoader): DataLoader for the validation dataset.
-            criterion (torch.nn.Module): The loss function (e.g., BCEWithLogitsLoss).
-            seq_length (int): The expected sequence length of input features.
-            num_features (int): The expected number of features per node.
-            epoch (int, optional): The current epoch number (for printing). Defaults to None.
-            num_epochs (int, optional): The total number of epochs (for printing). Defaults to None.
-        """
-        self.model.eval() # Set the model to evaluation mode
-        total_val_loss = 0.0
-        all_preds = []
-        all_targets = []
-
-        with torch.no_grad(): # Disable gradient calculations for inference
-            for batch in val_loader:
-                x, y, adj = batch
-                x, y, adj = x.to(self.device), y.to(self.device), adj.to(self.device)
+            if epoch % 1 == 0:
+                self.model.eval()
+                val_metrics = {
+                    'loss': 0.0, 'acc': 0.0, 'prec': 0.0, 
+                    'f1': 0.0, 'mcc': 0.0, 'rec': 0.0
+                }
+                n_val = 0
                 
-                # Move input and target tensors to the specified device (CPU/GPU)
-                emb = self.model.encode(x, adj)
-                val_outputs = self.model.decode(emb, adj)
-                val_loss = criterion(val_outputs, y)
+                with torch.no_grad():
+                    for batch in val_loader:                            
+                        x, y, adj = batch
+                        #x, y, adj = self._convert_data(batch, seq_length, num_features, batch.x.shape[0])
+                        x, y, adj = x.to(self.device), y.to(self.device), adj.to(self.device)
+                        #print(f"hyperstockgat input x.shape: {x.shape}, adj.shape: {adj.shape}, y.shape: {y.shape}")
+                        targets = y
+                        optimizer.zero_grad()
+                        emb = self.model.encode(x, adj)
+                        outputs = self.model.decode(emb, adj)
+                        loss = criterion(outputs, targets)
 
-                # Perform the forward pass through the model
+                        # Compute metrics for batch
+                        val_metrics['loss'] += criterion(outputs, targets).item()
+                        
+                        # Convert predictions to binary
+                        preds = (torch.sigmoid(outputs) > 0.5).int().cpu()
+                        targets = targets.int().cpu()
+                        
+                        # Compute metrics
+                        val_metrics['acc'] += accuracy_score(
+                            targets.flatten(), preds.flatten())
+                        val_metrics['f1'] += f1_score(
+                            targets.flatten(), preds.flatten(), zero_division=0)
+                        val_metrics['rec'] += recall_score(
+                            targets.flatten(), preds.flatten())
+                        val_metrics['mcc'] += matthews_corrcoef(
+                            targets.flatten(), preds.flatten())
+                        val_metrics['prec'] += precision_score(
+                            targets.flatten(), preds.flatten(), zero_division=0)
+                        
+                        n_val += 1
 
-                # Calculate the loss for the current batch
-                # y_val.float() ensures the target labels are float, which is required by common loss functions
-                # like BCEWithLogitsLoss for binary classification.
-                total_val_loss += val_loss.item() # Accumulate the loss
+                # Average metrics
+                if n_val > 0:
+                    for k in val_metrics:
+                        val_metrics[k] /= n_val
+                    
+                    # Print results in a table format
+                    if epoch % 5 == 0 :
+                        headers = ["Metric", "Value"]
+                        table_data = [
+                            ["Train Loss", f"{avg_train_loss:.4f}"],
+                            ["Val Loss", f"{val_metrics['loss']:.4f}"],
+                            ["Accuracy", f"{val_metrics['acc']:.4f}"],
+                            ["Precision", f"{val_metrics['prec']:.4f}"],
+                            ["Recall", f"{val_metrics['rec']:.4f}"],
+                            ["F1 Score", f"{val_metrics['f1']:.4f}"],
+                            ["MCC", f"{val_metrics['mcc']:.4f}"]
+                        ]
+                        
+                        print(f"\nEpoch {epoch+1}/{epochs} Results:")
+                        print(tabulate(table_data, headers=headers, tablefmt="pretty"))
+                        print("\n")
 
-                # Generate binary predictions from model outputs (logits)
-                # - torch.sigmoid converts logits to probabilities.
-                # - > 0.5 thresholds probabilities to binary classes (0 or 1).
-                # - .long() converts boolean results to integer (0 or 1).
-                preds = (torch.sigmoid(val_outputs) > 0.5).long()
-                # Collect predictions and true labels for overall metric calculation later
-                # Move to CPU before appending as scikit-learn metrics typically operate on CPU numpy arrays/tensors.
-                all_preds.append(preds.squeeze().cpu())
-                all_targets.append(y.squeeze().cpu())
-
-        # --- After iterating through all batches ---
-        # Concatenate all collected predictions and targets into single tensors
-        if all_preds: # Ensure that there were valid samples processed
-            y_true = torch.cat(all_targets)
-            y_pred = torch.cat(all_preds)
-
-            # Calculate average validation loss over all processed samples
-            avg_val_loss = total_val_loss / len(all_preds)
-
-            # Calculate various classification metrics using scikit-learn
-            print(y_true, "\n", y_pred)
-            acc = accuracy_score(y_true, y_pred)
-            f1 = f1_score(y_true, y_pred, average='weighted') # 'weighted' considers label imbalance
-            mcc = matthews_corrcoef(y_true, y_pred)
-            rec = recall_score(y_true, y_pred, average='weighted') # 'weighted' for potentially imbalanced binary classes
-
-            # Print the evaluation results
-            if epoch is not None and num_epochs is not None:
-                print(f"Epoch {epoch+1}/{num_epochs} - Val Loss: {avg_val_loss:.4f} - Acc: {acc:.4f} - Rec: {rec:.4f} - F1: {f1:.4f} - MCC: {mcc:.4f}")
-            else:
-                print(f"Validation Results - Val Loss: {avg_val_loss:.4f} - Acc: {acc:.4f} - Rec: {rec:.4f} - F1: {f1:.4f} - MCC: {mcc:.4f}")
-        else:
-            # Message if no samples were processed (e.g., all were skipped due to shape mismatch)
-            print("No valid samples processed during evaluation. All samples were skipped or val_loader was empty.")
-            # Return default values if no evaluation was performed
-            avg_val_loss, acc, f1, mcc, rec = float('nan'), float('nan'), float('nan'), float('nan'), float('nan')
-
-        # Return the calculated metrics
-        return avg_val_loss, acc, f1, mcc, rec
-
+                self.model.train()
+    
+    
+    @evaluate_decorator
     def test(self, test_dataset, seq_length, num_features):
-        validation_set = HyperStockGATDataset(test_dataset)
+        test_dataset = HyperStockGATDataset(test_dataset)  
         test_loader = DataLoader(test_dataset, batch_size=1)
         self.model.eval()
-        predictions = []
-        true_values = []
-
+        all_preds = []
+        all_labels = []
+        
         with torch.no_grad():
             for batch in test_loader:
                 x, y, adj = batch
-                if x.shape[-1] * x.shape[-2] != seq_length * num_features:
-                    print(f"Wrong input dimensions")
-                    continue
-                
-                y = y.squeeze(0) # remove the batch dimension
                 #x, y, adj = self._convert_data(batch, seq_length, num_features, batch.x.shape[0])
                 x, y, adj = x.to(self.device), y.to(self.device), adj.to(self.device)
-
+                #print(f"hyperstockgat input x.shape: {x.shape}, adj.shape: {adj.shape}, y.shape: {y.shape}")
                 emb = self.model.encode(x, adj)
-                output = self.model.decode(emb, adj)
+                outputs = self.model.decode(emb, adj)
+                preds = (torch.sigmoid(outputs) > 0.5).int().cpu()
+                all_preds.extend(preds.flatten().tolist())
+                all_labels.extend(batch.y.cpu().flatten().tolist())
 
-                predictions.append(output.cpu())
-                true_values.append(y.cpu())
-
-        # Concatenate all prediction tensors into one
-        all_predictions_tensor = torch.cat(predictions, dim=0) 
-
-        # Apply sigmoid and thresholding to the single tensor
-        preds = (torch.sigmoid(all_predictions_tensor) > .5).int()
-
-        # Concatenate true values as well if they are still a list, and convert to appropriate format
-        all_true_values_tensor = torch.cat(true_values, dim=0)
-        
-        #df['preds'] = all_preds
-        #df['targets'] = all_labels
-
-        return df
-        # Ensure return types match what you expect for sklearn metrics (e.g., NumPy arrays or Python lists)
-        return preds.numpy(), all_true_values_tensor.numpy() # Or .tolist() if preferred
+        return {'preds': np.array(all_preds), 'targets': np.array(all_labels)}

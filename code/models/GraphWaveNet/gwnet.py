@@ -101,7 +101,7 @@ class gwnet(nn.Module):
 
         # Adaptive Adjacency Matrix Learning (if enabled)
         # This mechanism learns a graph structure directly from the data
-        if gcn_bool and addaptadj:
+        if gcn_bool==True and addaptadj==True:
             if aptinit is None: # If no initial adaptive adjacency is provided
                 if supports is None: # Initialize self.supports if it's empty
                     self.supports = []
@@ -151,9 +151,8 @@ class gwnet(nn.Module):
         else:
             x = input
         
-        # Initial transformation of input features
+        # Initial transformation of input features from input_channels to residual_channels
         x = self.start_conv(x) 
-        #print(f"{x.shape=} after start conv (should remain the same)")
         skip = 0 # Initialize skip connection accumulation
         new_supports = None # Placeholder for combined support matrices
         

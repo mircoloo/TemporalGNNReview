@@ -129,7 +129,7 @@ class GraphWaveNetRunner(BaseModelRunner):
                 self.model.train()
 
     @evaluate_decorator
-    def test(self, test_dataset, seq_length, num_features, batch_size=32, config=None):
+    def test(self, test_dataset, seq_length, num_features, batch_size=32, config=None, threshold=0.5):
         test_set = GraphWaveNetDataset(test_dataset)
         test_loader = DataLoader(test_set, batch_size=batch_size)
         
@@ -147,7 +147,7 @@ class GraphWaveNetRunner(BaseModelRunner):
                 output_for_loss = output[:, :, :, -1]
                 predict = output_for_loss.squeeze(1)
                 
-                preds = (torch.sigmoid(predict) > self.threshold).int()
+                preds = (torch.sigmoid(predict) > threshold).int()
                 all_preds.append(preds.cpu())
                 all_targets.append(y.cpu())
 
