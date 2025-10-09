@@ -440,25 +440,26 @@ class MyDataset(Dataset):
             box = self.dates[i : i + self.window + 1] 
             
             # 10 Create and normalize feature matrix
-            X = self.create_feature_node_timestamp_matrix(box) # [feature, node, timestep]
+            X_raw = self.create_feature_node_timestamp_matrix(dates=box, normalize=False)
+            X_norm = self.create_feature_node_timestamp_matrix(dates=box, normalize=True)
 
 
 
-            if X.shape[1] == 0: # X.shape[1] is the number of nodes
+            if X_norm.shape[1] == 0: # X.shape[1] is the number of nodes
                 print(f"Skipping graph {i}: No nodes.")
                 continue
 
             # Target C is based on the 'Close' price (row index 0)
-            C = torch.zeros(X.shape[1]) # A vector of size [num_nodes]
+            C = torch.zeros(X_norm.shape[1]) # A vector of size [num_nodes]
 
             # X is [feature, node, timestep] - for each node, if Close[today] - Close[yesterday] > 0, C[node] = 1 else 0
             for j in range(C.shape[0]):
-                if X[0, j, -1] - X[0, j, -2] > 0:
+                if X_norm[0, j, -1] - X_norm[0, j, -2] > 0:
                     C[j] = 1
 
             # Remove the last timestep (prediction one)
-            X_features = X[:, :, :-1]
-            
+            X_features = X_norm[:, :, :-1]
+
             if X_features.nelement() == 0:
                 print(f"Skipping graph {i}: Feature matrix is empty.")
                 continue
@@ -471,7 +472,8 @@ class MyDataset(Dataset):
 
             try:
                 # 11 Create adjacency matrix and convert to edge_index and edge_attr
-                A = self.adjacency_matrix(X_final)
+                X_raw_final = X_raw[:, :, :-1].permute(1, 0, 2).reshape(X_raw.shape[1], -1)
+                A = self.adjacency_matrix(X_raw_final)
                 edge_index, edge_attr = dense_to_sparse(A) # [N;F*T] -> [N;N] -> edge_index [2;E], edge_attr [E]
             except Exception as e:
                 print(f"Skipping graph {i} due to adjacency matrix error: {e}")
@@ -492,86 +494,67 @@ class MyDataset(Dataset):
         print(f"Adjacency matrix min: {self.adj_min}, max: {self.adj_max}")
     
 
-    def create_feature_node_timestamp_matrix(self, dates: List[str]) -> torch.Tensor:
+    def create_feature_node_timestamp_matrix(self, dates: List[str], normalize: bool = True) -> torch.Tensor:
         """Create and normalize the node feature matrix for given dates (used with box)."""
-        # Convert date strings to datetime objects for indexing
         dates_dt = pd.to_datetime(dates)
-        
-        # Initialize the feature tensor X with the correct dimensions
-        # 5 features, number of companies, and number of time steps in the window [F;N;T]
         X = torch.zeros((5, len(self.company_list), len(dates_dt)))
 
-        # 11 For each company in the company list
         for idx, ticker in enumerate(self.company_list):
-            # Get the stock filpath (csv with historical data)
             d_path = self._get_ticker_filepath(ticker)
             df = pd.read_csv(d_path, parse_dates=[0], index_col=0)
-            # Ensure the DataFrame index is just the date part for clean matching
             df.index = pd.to_datetime(df.index.date)
-
-            # Reindex the DataFrame to match the exact dates of the window
-            df_reindexed = df.reindex(dates_dt, fill_value=0) # [Total_days, Features]
-            
-            # Get the first 5 features
+            df_reindexed = df.reindex(dates_dt, fill_value=0)
             features_df = df_reindexed.iloc[:, :5].astype(float)
-            # Apply stock-level normalization if parameters exist
-            if (self.normalize_method.lower() in ['zscore', 'minmax', 'robust', 'maxabs'] and 
+
+            # 🚀 Case 1: No normalization requested
+            if not self.normalize_method or self.normalize_method.lower() in ['none', '']:
+                # Simply keep raw features
+                pass
+
+            # 🚀 Case 2: Normalization that requires precomputed parameters
+            elif normalize and (
+                self.normalize_method.lower() in ['zscore', 'minmax', 'robust', 'maxabs'] and
                 hasattr(self, 'norm_params') and 
                 'stock_params' in self.norm_params and 
-                ticker in self.norm_params['stock_params']):
-                
+                ticker in self.norm_params['stock_params']
+            ):
                 stock_params = self.norm_params['stock_params'][ticker]
-                
-                # Normalize each feature column independently
-                for col_idx in range(5):  # Assuming 5 features
+                for col_idx in range(5):
                     str_idx = str(col_idx)
                     if str_idx not in stock_params:
                         continue
-                        
                     series = features_df.iloc[:, col_idx]
-                    
-                    # Apply normalization based on method
+
                     if self.normalize_method == 'zscore':
                         mean = stock_params[str_idx]['mean']
                         std = stock_params[str_idx]['std']
                         features_df.iloc[:, col_idx] = (series - mean) / std
-                        
                     elif self.normalize_method == 'minmax':
                         min_val = stock_params[str_idx]['min']
                         max_val = stock_params[str_idx]['max']
                         features_df.iloc[:, col_idx] = (series - min_val) / (max_val - min_val)
-                        
                     elif self.normalize_method == 'robust':
                         q25 = stock_params[str_idx]['q25']
                         iqr = stock_params[str_idx]['iqr']
                         features_df.iloc[:, col_idx] = (series - q25) / iqr
-                        
                     elif self.normalize_method == 'maxabs':
                         maxabs = stock_params[str_idx]['maxabs']
                         features_df.iloc[:, col_idx] = series / maxabs
-            
-            # Apply log1p normalization (doesn't require pre-computed parameters)
-            elif self.normalize_method == 'log1p':
+
+            # 🚀 Case 3: Log or row normalization (no precomputed params)
+            elif self.normalize_method == 'log1p' and normalize:
                 features_df = np.log1p(features_df)
-            
-            # Apply row normalization (doesn't require pre-computed parameters)
-            elif self.normalize_method == 'row':
-                # Normalize each row (date) independently
+            elif self.normalize_method == 'row' and normalize:
                 row_sums = features_df.sum(axis=1)
-                # Avoid division by zero
                 row_sums[row_sums < 1e-5] = 1.0
                 for col_idx in range(5):
                     features_df.iloc[:, col_idx] = features_df.iloc[:, col_idx].div(row_sums)
-            
-            # Handle NaN values
+
+            # Handle NaNs
             features_df = features_df.fillna(0)
-            
-            # Transpose to get [features, timestamps]
             df_features = features_df.transpose()
-            
-            # Assign to tensor
-            X[:, idx, :] = torch.from_numpy(df_features.to_numpy()) #[F;N;T] maybe save this to recover all the dataset
-            
+            X[:, idx, :] = torch.from_numpy(df_features.to_numpy())
+
         return X
 
     

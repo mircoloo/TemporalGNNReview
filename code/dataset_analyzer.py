@@ -295,6 +295,73 @@ class MarketAnalyzer():
         
         return result
 
+    def get_class_dist(self) -> pd.Series:
+        """
+        Calculates the distribution of classes (Up/Down) across all snapshots.
+        """
+        all_labels = []
+        for snapshot in self.graph_snapshots:
+            all_labels.extend(snapshot.y.numpy())
+        
+        labels_series = pd.Series(all_labels)
+        class_dist = labels_series.value_counts(normalize=True)
+        return class_dist
+    
+    def get_connectivity(self) -> float:
+        """
+        Calculates the average graph connectivity (density) across all snapshots.
+        """
+        all_graphs = self.graph_snapshots_to_networkx()
+        if not all_graphs:
+            return 0.0
+        
+        total_connectivity = sum(nx.density(G) for G in all_graphs)
+        return total_connectivity / len(all_graphs)
+    
+    def get_average_node_degrees(self) -> pd.DataFrame:
+        """
+        Calculates the average in-degree and out-degree for each node across all snapshots.
+        
+        Returns:
+            pd.DataFrame: A DataFrame with columns ['node_idx', 'ticker', 
+                                                 'avg_in_degree', 'avg_out_degree', 
+                                                 'avg_weighted_in_degree', 'avg_weighted_out_degree'].
+        """
+        num_nodes = self.num_nodes
+        in_degrees = np.zeros(num_nodes)
+        out_degrees = np.zeros(num_nodes)
+        weighted_in_degrees = np.zeros(num_nodes)
+        weighted_out_degrees = np.zeros(num_nodes)
+        
+        graphs = self.graph_snapshots_to_networkx()
+        num_snapshots = len(graphs)
+
+        if num_snapshots == 0:
+            return pd.DataFrame()
+
+        for G in graphs:
+            for i in range(num_nodes):
+                in_degrees[i] += G.in_degree(i)
+                out_degrees[i] += G.out_degree(i)
+                weighted_in_degrees[i] += G.in_degree(i, weight='weight')
+                weighted_out_degrees[i] += G.out_degree(i, weight='weight')
+        
+        avg_in_degrees = in_degrees / num_snapshots
+        avg_out_degrees = out_degrees / num_snapshots
+        avg_weighted_in_degrees = weighted_in_degrees / num_snapshots
+        avg_weighted_out_degrees = weighted_out_degrees / num_snapshots
+
+        degree_df = pd.DataFrame({
+            'node_idx': range(num_nodes),
+            'ticker': [self.index_to_stock.get(i, f"Node_{i}") for i in range(num_nodes)],
+            'avg_in_degree': avg_in_degrees,
+            'avg_out_degree': avg_out_degrees,
+            'avg_weighted_in_degree': avg_weighted_in_degrees,
+            'avg_weighted_out_degree': avg_weighted_out_degrees
+        })
+        
+        return degree_df
+
 # --- UNCHANGED PLOTTING AND COMPARISON FUNCTIONS ---
 
 def compare_dataset_stats(analyzers, names):

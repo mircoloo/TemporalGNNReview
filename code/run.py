@@ -344,8 +344,8 @@ if __name__ == '__main__':
         '--norm',
         type=str,
         required=True,
-        choices=['zscore', 'minmax', 'log1p'],
-        help="The normalization technique to apply (e.g., 'zscore', 'minmax')."
+        choices=['zscore', 'minmax', 'log1p', 'none'],
+        help="The normalization technique to apply (e.g., 'zscore', 'minmax', 'none')."
     )
 
     parser.add_argument(

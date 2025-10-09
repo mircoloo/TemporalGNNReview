@@ -11,7 +11,8 @@ class TimeAxisAttention(nn.Module):
         # x: (D, W, L) # D: number of stocks / W: length of observations / L: number of features
         o, (h, _) = self.lstm(x) # o: (D, W, H) / h: (1, D, H)
         score = torch.bmm(o, h.permute(1, 2, 0)) # (D, W, H) x (D, H, 1)
-        tx_attn = torch.softmax(score, 1).squeeze(-1)  # (D, W)
+        tx_attn = torch.softmax(score, 1).squeeze(-1)  # (D, W)        
+        print(f"o shape: {o.shape}, h shape: {h.shape}, score shape: {score.shape}, tx_attn shape: {tx_attn.shape}")
         context = torch.bmm(tx_attn.unsqueeze(1), o).squeeze(1)  # (D, 1, W) x (D, W, H)
         normed_context = self.lnorm(context)
         if rt_attn:
@@ -97,13 +98,16 @@ class DTML(nn.Module):
     
 
 if __name__ == "__main__":
-    W = 30      # window length
+    W = 14      # window length
     D = 712      # number of stocks
-    L = 14      # features per timestep
-    H = 64      # hidden size
+    L = 5      # features per timestep
+    H = 100      # hidden size
     layers = 1
-    heads = 4
+    heads = 5
     beta = 0.2
+    # W: length of observations
+    # D: number of stocks
+    # L: number of features
 
     # Create random dummy inputs
     # stocks: (W, D, L)
