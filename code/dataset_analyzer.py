@@ -245,6 +245,15 @@ class MarketAnalyzer():
             
         return homophilous_edges / total_edges
 
+    def get_average_homophily_score(self) -> float:
+        """
+        Calculates the average homophily score across all snapshots in the dataset.
+        """
+        if self.num_snapshots == 0:
+            return 0.0
+        
+        scores = [self.get_homophily_score(i) for i in range(self.num_snapshots)]
+        return np.mean(scores) if scores else 0.0
 
     def get_feature_timeseries(self, stock_ticker=None, feature='Close', num_snapshots=None):
         if feature not in self.features:
