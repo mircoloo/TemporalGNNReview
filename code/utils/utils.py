@@ -27,6 +27,9 @@ def load_model(model_name: str):
             return MultiStockDARNN
         case "hyperstockgat": #to implement later
              return NCModel
+        case "DTML":
+            from models.DTML.DTML import DTML
+            return DTML
         case _:  # default case for any other model name
             raise ValueError(f"Unknown model name: {model_name}")
         

@@ -46,6 +46,7 @@ class MyDataset(Dataset):
         self.window = window
         self.normalize_method = normalize_method
         self.global_data_search_cutoff = '2025-07-05'
+        self.threshold = 0.0
 
 
         #params for minmax normalizing adj matrix
@@ -144,10 +145,9 @@ class MyDataset(Dataset):
             sample = torch.load(data_path, weights_only=False)
             if self.minmax_normalize_adj and self.adj_min != torch.inf and self.adj_max != -torch.inf:
                 # Normalize edge_attr using stored min and max
-                threshold = .004 #to change
                 sample.edge_attr = (sample.edge_attr - self.adj_min) / (self.adj_max - self.adj_min + 1e-9)
                 sample.edge_attr = torch.clamp(sample.edge_attr, 0, 1)  # Ensure values are within [0, 1]
-                sample.edge_attr[sample.edge_attr < threshold] = 0  # Thresholding to ensure no very small entries
+                sample.edge_attr[sample.edge_attr < self.threshold] = 0  # Thresholding to ensure no very small entries
             return sample
         else:
             raise FileNotFoundError(f"No graph data found for index {idx}")

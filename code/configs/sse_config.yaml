@@ -57,8 +57,16 @@ model_params:
     M: 64
     P: 64
 
-  HyperStockGraph:
-    
+  DTML:
+    input_size: 5
+    hidden_size: 128
+    layers: 3
+    hidden_size: 64
+    dropout: 0.3
+    num_layers: 1
+    n_heads: 4
+    beta: 0.1
+    drop_rate: 0.3
 
 # -----------------------------------------------------------------
 

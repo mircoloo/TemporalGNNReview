@@ -1,29 +1,32 @@
-#!python3 
 import argparse
 import sys
 from pathlib import Path
-import os
 
-from model_runners import *
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import yaml
-from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, mean_squared_error, recall_score
+from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import to_dense_adj
 from tqdm import tqdm
+import os 
+import sys
 
-torch.manual_seed(42)  # For reproducibility
+
 
 # --- Local Imports ---
-from utils.dataset_utils import filter_stocks_from_timeperiod, retrieve_company_list
-from data.geometric_dataset_gen import MyDataset as MyGeometricDataset
-from utils.utils import load_model
-
-
-PROJECT_PATH = Path(__file__).parent.resolve()
-
+# Ensure these paths are correct relative to your project structure.
+# You might need to adjust them if your project layout is different.
+try:
+    from models.DGDNN.Data.geometric_dataset_gen import MyDataset as MyGeometricDataset
+    from utils import (log_test_results, neighbor_distance_regularizer,
+                       theta_regularizer, load_model)
+    from dataset_utils import filter_stocks_from_timeperiod, retrieve_company_list
+except ImportError as e:
+    print(f"Error importing local modules: {e}")
+    print("Please ensure your Python path is set up correctly and the necessary files exist.")
+    sys.exit(1)
 
 
 def main(args: argparse.Namespace) -> None:
@@ -39,12 +42,11 @@ def main(args: argparse.Namespace) -> None:
     print(f"🚀 Starting process for market: {market_name.upper()}")
 
     # Dynamically load configuration and data paths
-    CONFIG_FILE_PATH = PROJECT_PATH / "configs" / "main_config.yaml"
-    MARKET_CONFIG__FILE_PATH = PROJECT_PATH / f"configs/{market_name}_config.yaml"
-    MODELS_WEIGHTS_DIR_PATH = PROJECT_PATH / "models/weights"
+    MARKET_CONFIG_PATH = PROJECT_PATH / f"configs/{market_name}_config.yaml"
+    MODELS_WEIGHTS_PATH = PROJECT_PATH / "models/weights"
     
     # Create weights directory if it doesn't exist
-    MODELS_WEIGHTS_DIR_PATH.mkdir(parents=True, exist_ok=True)
+    MODELS_WEIGHTS_PATH.mkdir(parents=True, exist_ok=True)
     
     # Assuming data is in a fixed relative location
     hist_price_stocks_path = PROJECT_PATH / f"data/datasets/hist_prices/{market_name.upper()}"
@@ -53,18 +55,16 @@ def main(args: argparse.Namespace) -> None:
 
     # Load market-specific configuration file
     try:
-        with open(MARKET_CONFIG__FILE_PATH, 'r') as f:
+        with open(MARKET_CONFIG_PATH, 'r') as f:
             config_yaml = yaml.safe_load(f)
-        with open(CONFIG_FILE_PATH, 'r') as config_file:
-            main_config_yaml = yaml.safe_load(config_file)
     except FileNotFoundError:
-        print(f"❌ Error: Configuration file not found at {MARKET_CONFIG__FILE_PATH}")
+        print(f"❌ Error: Configuration file not found at {MARKET_CONFIG_PATH}")
         sys.exit(1)
     except Exception as e:
         print(f"❌ Error parsing YAML config: {repr(e)}")
         sys.exit(1)
 
-    # ------------------ 2. ASSIGN VARIABLES FROM DATASET CONFIG ------------------
+    # ------------------ 2. ASSIGN VARIABLES FROM CONFIG ------------------
     dataset_param = config_yaml['dataset_params']
     model_param = config_yaml['model_params']
     train_param = config_yaml['training_params']
@@ -75,286 +75,164 @@ def main(args: argparse.Namespace) -> None:
     test_sedate = dataset_param['test_sedate']
     window_size = dataset_param['window_size']
     use_fast_approximation = dataset_param['use_fast_approximation']
-    batch_size = train_param.get('batch_size', 1)  # Default to 1 if not specified
     
     # ------------------ 3. LOAD AND PREPARE DATASET ------------------
     company_list = retrieve_company_list(tickers_csv_path)
-    # Retrieve the time period 
     total_time_period = [min(train_sedate + val_sedate + test_sedate), max(train_sedate + val_sedate + test_sedate)]
-    
-    # Filters only the company which respects the time period
     filtered_company_list = filter_stocks_from_timeperiod(company_list, market, total_time_period, hist_price_stocks_path)
 
     print(f"Original company list length: {len(company_list)}")
     print(f"Filtered company list length: {len(filtered_company_list)}")
-    norm_method = args.norm.lower() if args.norm else ''
-    use_adj_norm = False if args.adjnorm=='False' else True
+
     # Build or retrieve the datasets
     print("-" * 5, "Building train dataset...", "-" * 5)
-    train_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, train_sedate[0], train_sedate[1], window_size, 'Train', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate, minmax_normalize_adj=use_adj_norm)
+    train_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, train_sedate[0], train_sedate[1], window_size, 'Train', use_fast_approximation)
     print("-" * 5, "Building validation dataset...", "-" * 5)
-    validation_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, val_sedate[0], val_sedate[1], window_size, 'Validation', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate, minmax_normalize_adj=use_adj_norm)
+    validation_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, val_sedate[0], val_sedate[1], window_size, 'Validation', use_fast_approximation)
     print("-" * 5, "Building test dataset...", "-" * 5)
-    test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, test_sedate[0], test_sedate[1], window_size, 'Test', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate, minmax_normalize_adj=use_adj_norm)
+    test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, test_sedate[0], test_sedate[1], window_size, 'Test', use_fast_approximation)
+    
+    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+    validation_loader = DataLoader(validation_dataset, batch_size=1, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
-    num_nodes =len(filtered_company_list)
-    features = main_config_yaml["features"]
-    print(f"{features=}")
-    n_features = len(features)
-    print(f"Number of nodes (stocks): {num_nodes} {train_dataset[0].x.shape=}")
+    num_nodes = train_dataset[0].x.shape[0]
+    print(f"Number of nodes (stocks): {num_nodes}")
 
     # ------------------ 4. BUILD THE MODEL FROM CONFIG PARAMS ------------------
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Using device: {device}")
     
-    # ------------------ 5. TRAIN AND TEST THE MODEL USING THE RUNNER ------------------s
-    #model_orchestrator( args.model, model_param )
-    if args.model == 'dgdnn':
-        print("DGDNN model selected. Running training and evaluation pipeline.")
-        DGDNN = load_model('DGDNN')
-        model_param = model_param['DGDNN']
-        model_DGDNN = DGDNN(
-            diffusion_size=model_param['diffusion_size'],
-            embedding_size=model_param['embedding_size'],
-            embedding_hidden_size = model_param['embedding_hidden_size'],
-            embedding_output_size = model_param['embedding_output_size'],
-            raw_feature_size = model_param['raw_feature_size'],
-            classes=1,
-            layers=model_param['layers'],
-            num_nodes=num_nodes,
-            expansion_step=model_param['expansion_step'],
-            num_heads=model_param['num_heads'],
-            active=model_param['active_layers']
-        ).to(device)
+    DGDNN = load_model('DGDNN')
     
-        print(f"Model parameters: {sum([p.numel() for p in model_DGDNN.parameters()]):,}")
-        
-        runner = DGDNNRunner(model_DGDNN, device, market_name)
-
-        # build the optimizer & criterion
-        optimizer = optim.Adam(model_DGDNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
-        criterion = nn.BCEWithLogitsLoss()
-        
-        num_epochs = train_param['epochs']
-        
-        alpha = train_param.get('neighbour_radius_coeff', 0.0)
-
-        # Train the model
-        runner.train(
-            train_dataset, 
-            validation_dataset, 
-            optimizer, 
-            criterion, 
-            num_epochs,
-            alpha, 
-            window_size, 
-            num_nodes,
-            batch_size=batch_size)
-            
-        runner.test(test_dataset, 
-                    window_size, 
-                    num_nodes)
-
-
-        
-    elif args.model == 'graphwavenet':
-        print("GraphWaveNet model selected. Running training and evaluation pipeline.")
-        GWN = load_model('GraphWaveNet')
-        model_param = model_param['GraphWaveNet']
-        
-        
-        # Prepare model config
-        model_config = {
-            'num_nodes': num_nodes,
-            'in_dim': n_features,
-            'out_dim': 1,
-            'residual_channels': model_param['residual_channels'],
-            'dilation_channels': model_param['dilation_channels'],
-            'skip_channels': model_param['skip_channels'],
-            'end_channels': model_param['end_channels'],
-            'kernel_size': model_param['kernel_size'],
-            'blocks': model_param['blocks'],
-            'layers': model_param['layers'],
-            'dropout': 0.3,
-            'gcn_bool': True,
-            'addaptadj': True,
-        }
-        
-        model_GWN = GWN(
-            device=device,
-            **model_config
-        ).to(device)
-
-        runner = GraphWaveNetRunner(model_GWN, device, market_name)
-        print(f"Model parameters: {sum([p.numel() for p in model_GWN.parameters()]):,}")
-        print(f"Creating GraphWaveNet model with parameters: {model_param}")
-        print(f"Learning rate: {train_param['learning_rate']}, weight decay: {train_param['weight_decay']}")
-        print(f"Batch size: {batch_size}, Epochs: {train_param['epochs']}")
-        # Training setup
-        optimizer = optim.Adam(model_GWN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
-        criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([.8]).to(device))
-        runner.train(train_dataset, validation_dataset, optimizer, criterion, train_param['epochs'], window_size, n_features, batch_size=batch_size, threshold=.5)
-        print("✅ Training finished.")
-        print("\n" + "="*10 + " TESTING " + "="*10)
-        runner.test(test_dataset, window_size, n_features, batch_size=batch_size, config=model_config)
-    elif args.model == 'darnn':
-        MultiStockDARNN = load_model('DARNN')
-        model_param = model_param['DARNN']
-        print(f"Creating DARNN model with parameters: {model_param}")
-        model_DARNN = MultiStockDARNN(
-            N = num_nodes,
-            M = model_param['M'],
-            P = model_param['P'],
-            T=window_size-1,
-            num_stocks=num_nodes,
-            device=device
-        ).to(device)
-
-        print(f"Model parameters: {sum([p.numel() for p in model_DARNN.parameters()]):,}")
-        print(f"Learning rate: {train_param['learning_rate']}, weight decay: {train_param['weight_decay']}")
-        print(f"Batch size: {batch_size}, Epochs: {train_param['epochs']}")
-        runner = DARNNRunner(model_DARNN, device, market_name)
-        optimizer = optim.Adam(model_DARNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
-        criterion = nn.BCEWithLogitsLoss()
-        runner.train(train_dataset, validation_dataset, optimizer, criterion, train_param['epochs'], seq_length=window_size)
-        runner.test(test_dataset)
+    model_DGDNN = DGDNN(
+        diffusion_size=model_param['diffusion_size'],
+        embedding_size=model_param['embedding_size'],
+        embedding_hidden_size = model_param['embedding_hidden_size'],
+        embedding_output_size = model_param['embedding_output_size'],
+        raw_feature_size = model_param['raw_feature_size'],
+        classes=1,
+        layers=model_param['layers'],
+        num_nodes=num_nodes,
+        expansion_step=model_param['expansion_step'],
+        num_heads=model_param['num_heads'],
+        active=model_param['active_layers'],
+        timestamp=window_size
+    ).to(device)
     
-    elif args.model == 'dtml':
-        model_DTML = load_model('DTML')
-        model_param = model_param['DTML']
-        print(f"Creating DTML model with parameters: {model_param}")
-        model_DTML = model_DTML(
-            input_size=n_features,
-            hidden_size=model_param['hidden_size'],
-            num_layers=model_param['num_layers'],
-            n_heads=model_param['n_heads'],
-            beta=model_param['beta'],
-            drop_rate=model_param['drop_rate']
-        ).to(device)
+    print(f"Model parameters: {sum([p.numel() for p in model_DGDNN.parameters()]):,}")
 
-        print(f"Model parameters: {sum([p.numel() for p in model_DTML.parameters()]):,}")
-        print(f"Learning rate: {train_param['learning_rate']}, weight decay: {train_param['weight_decay']}")
-        print(f"Batch size: {batch_size}, Epochs: {train_param['epochs']}")
-        runner = DTMLRunner(model_DTML, device, market_name)
-
-
-    elif args.model == 'hyperstockgat':
-        NCModel = load_model('hyperstockgat')
-        
-        args = argparse.Namespace(
-            #p='../data/2013-01-01',
-            #m='NASDAQ',
-            device = device,
-            feat_dim = 5,  # Assuming each node has 5 features
-            n_nodes = num_nodes,  # Number of nodes in the graph
-            n_classes = 1,
-            #t=None,
-            l=window_size,
-            u=256,
-            s=10,
-            r=1e-3,
-            a=10,
-            gpu=0,
-            #emb_file='NASDAQ_rank_lstm_seq-16_unit-64_2.csv.npy',
-            #rel_name='sector_industry',
-            #inner_prod=0,
-            lr=0.001,
-            dropout=0.2,
-            model='HGCN',
-            dim=6, #input dim for the decoder(?)
-            manifold='Hyperboloid',
-            c=1.0,
-            cuda=0,
-            #epochs=5000,
-            weight_decay=0.0001,
-            optimizer='Adam',
-            momentum=0.999,
-            patience=100,
-            seed=None,
-            log_freq=5,
-            eval_freq=1,
-            save=0,
-            save_dir=None,
-            sweep_c=0,
-            lr_reduce_freq=None,
-            gamma=0.5,
-            print_epoch=True,
-            grad_clip=True,
-            min_epochs=100,
-            task='nc',
-            pretrained_embeddings=None,
-            num_layers=10,
-            bias=1,
-            act='relu',
-            n_heads=2,
-            alpha=0.2,
-            double_precision=0,
-            use_att=0,
-            dataset='pubmed',
-            val_prop=0.05,
-            test_prop=0.1,
-            use_feats=1,
-            normalize_feats=1,
-            normalize_adj=1,
-            split_seed=1234,
+    # ------------------ 5. TRAIN THE MODEL ------------------
+    optimizer = optim.Adam(model_DGDNN.parameters(), lr=train_param['learning_rate'], weight_decay=train_param['weight_decay'])
+    criterion = nn.BCEWithLogitsLoss()
+    num_epochs = train_param['epochs']
+    alpha = train_param.get('neighbour_radius_coeff', 0.0) # Get alpha, default to 0 if not present
+    
+    model_DGDNN.train()
+    
+    print("\n" + "="*10 + " TRAINING " + "="*10)
+    for epoch in tqdm(range(num_epochs + 1), desc="Epochs"):
+        train_loss = 0.0
+        for train_sample in train_loader:
+            if train_sample.x.shape[-1] != 5 * window_size:
+                print(f"Warning: Skipping sample with incorrect shape: {train_sample.x.shape}")
+                continue
             
-        )
-   
+            train_sample = train_sample.to(device)
+            optimizer.zero_grad()
+            
+            A = to_dense_adj(train_sample.edge_index, batch=train_sample.batch, edge_attr=train_sample.edge_attr, max_num_nodes=num_nodes).squeeze(0)
+            C = train_sample.y.unsqueeze(dim=1).float()
+            
+            outputs = model_DGDNN(train_sample.x, A)
+            
+            # Loss from paper: L_CE - alpha * L_neighbor_dist + L_theta_reg
+            loss = criterion(outputs, C) \
+                   - alpha * neighbor_distance_regularizer(model_DGDNN.theta) \
+                   + theta_regularizer(model_DGDNN.theta)
+            
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
 
-        model_HSG = NCModel(args).to(device)
+        # --- Validation step ---
+        if epoch % 20 == 0:
+            val_loss, val_acc, val_f1 = 0.0, 0.0, 0.0
+            model_DGDNN.eval() # Switch to evaluation mode
+            with torch.no_grad():
+                for val_sample in validation_loader:
+                    if val_sample.x.shape[-1] != 5 * window_size: continue
+                    val_sample = val_sample.to(device)
+                    
+                    A = to_dense_adj(val_sample.edge_index, batch=val_sample.batch, edge_attr=val_sample.edge_attr, max_num_nodes=num_nodes).squeeze(0)
+                    out = model_DGDNN(val_sample.x, A)
+                    
+                    y_true = val_sample.y.detach().cpu()
+                    y_pred = (out > 0).float().detach().cpu().squeeze()
+                    
+                    val_loss += criterion(out, val_sample.y.unsqueeze(1).float()).item()
+                    val_acc += accuracy_score(y_true, y_pred)
+                    val_f1 += f1_score(y_true, y_pred, zero_division=0)
+            
+            model_DGDNN.train() # Switch back to training mode
+            avg_val_loss = val_loss / len(validation_loader)
+            avg_val_acc = val_acc / len(validation_loader)
+            avg_val_f1 = val_f1 / len(validation_loader)
+            print(f"Epoch {epoch}/{num_epochs} -> Train Loss: {train_loss:.4f}, Val Loss: {avg_val_loss:.4f}, Val Acc: {avg_val_acc:.4f}, Val F1: {avg_val_f1:.4f}")
 
-        runner = HyperStockGATRunner(model_HSG, device, market_name) 
-        print(f"Model parameters: {sum([p.numel() for p in model_HSG.parameters()]):,}")
-        print("Model created successfully:")
+    print("✅ Training finished.")
 
-        optimizer = optim.Adam(model_HSG.parameters(), lr=0.001)
-        criterion = nn.BCEWithLogitsLoss()
-        num_epochs = train_param['epochs']
+    # ------------------ 6. TEST THE MODEL ------------------
+    print("\n" + "="*10 + " TESTING " + "="*10)
+    model_DGDNN.eval()
+    all_logits = torch.tensor([]).to(device)
+    all_labels = torch.tensor([]).to(device)
 
-        runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, window_size, 5)
-        print("✅ Training finished.")
+    with torch.no_grad():
+        for test_sample in test_loader:
+            if test_sample.x.shape[-1] != 5 * window_size: continue
+            test_sample = test_sample.to(device)
+            
+            A = to_dense_adj(test_sample.edge_index, batch=test_sample.batch, edge_attr=test_sample.edge_attr, max_num_nodes=num_nodes).squeeze(0)
+            
+            out = model_DGDNN(test_sample.x, A)
+            
+            all_logits = torch.cat((all_logits, out.squeeze()), dim=0)
+            all_labels = torch.cat((all_labels, test_sample.y), dim=0)
 
-        print("\n" + "="*10 + " TESTING " + "="*10)
-        y_pred, y_true = runner.test(test_dataset, window_size, 5)
-   
+    # Calculate final metrics
+    labels_cpu = all_labels.detach().cpu()
+    preds_cpu = (all_logits > 0).float().detach().cpu()
+    
+    test_acc = accuracy_score(labels_cpu, preds_cpu)
+    test_f1 = f1_score(labels_cpu, preds_cpu)
+    test_mcc = matthews_corrcoef(labels_cpu, preds_cpu)
 
-
+    print(f"Test Accuracy: {test_acc:.4f}")
+    print(f"Test F1-Score: {test_f1:.4f}")
+    print(f"Test MCC: {test_mcc:.4f}")
+    
+    # ------------------ 7. SAVE RESULTS AND MODEL ------------------
+    output_model_path = MODELS_WEIGHTS_PATH / f"model_DGDNN_{market_name}_weights.pth"
+    torch.save(model_DGDNN.state_dict(), output_model_path)
+    print(f"💾 Model weights saved to: {output_model_path}")
+    
+    log_file_name = f"{market_name}_run.log"
+    log_path = PROJECT_PATH / 'logs'
+    log_test_results(log_file_name, log_path, epochs=num_epochs, test_acc=test_acc, test_f1=test_f1, test_mcc=test_mcc)
+    print(f"📄 Log file saved to: {log_path / log_file_name}")
 
 
 if __name__ == '__main__':
-
     # Create the parser
-    parser = argparse.ArgumentParser(description="Train and evaluate a model for a specific stock market.")
+    parser = argparse.ArgumentParser(description="Train and evaluate DGDNN model for a specific stock market.")
 
-    parser.add_argument('--model', 
-                        type=str, 
-                        required=True, 
-                        choices=['dgdnn', 'graphwavenet', 'darnn', 'hyperstockgat', 'dtml'],
-                        help="The model to run.) #Choose from 'dgdnn', 'graphwavenet', 'darnn', or 'hyperstockgat'.")
     # Add the required --market argument
     parser.add_argument(
         '--market',
         type=str,
         required=True,
-        choices=['nasdaq', 'nyse', 'sse'],
         help="The stock market to process (e.g., 'nasdaq', 'nyse', 'sse'). This name is used to find the corresponding config and tickers file."
-    )
-
-    parser.add_argument(
-        '--norm',
-        type=str,
-        required=True,
-        choices=['zscore', 'minmax', 'log1p', 'none'],
-        help="The normalization technique to apply (e.g., 'zscore', 'minmax', 'none')."
-    )
-
-    parser.add_argument(
-        '--adjnorm',
-        type=str,
-        required=False,
-        choices=['True', 'False'],
-        help="Whether to apply adjacency normalization (e.g., 'True', 'False').",
-        default='False'
     )
 
     # Parse the command-line arguments

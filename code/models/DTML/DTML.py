@@ -12,7 +12,6 @@ class TimeAxisAttention(nn.Module):
         o, (h, _) = self.lstm(x) # o: (D, W, H) / h: (1, D, H)
         score = torch.bmm(o, h.permute(1, 2, 0)) # (D, W, H) x (D, H, 1)
         tx_attn = torch.softmax(score, 1).squeeze(-1)  # (D, W)        
-        print(f"o shape: {o.shape}, h shape: {h.shape}, score shape: {score.shape}, tx_attn shape: {tx_attn.shape}")
         context = torch.bmm(tx_attn.unsqueeze(1), o).squeeze(1)  # (D, 1, W) x (D, W, H)
         normed_context = self.lnorm(context)
         if rt_attn:
