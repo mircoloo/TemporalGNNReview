@@ -168,22 +168,23 @@ class MarketAnalyzer():
 
     def get_snapshot_info(self, snapshot_index: int) -> dict:
         """
-        REFACTORED: Uses NetworkX graph properties for calculation.
-        - G.number_of_nodes() and G.number_of_edges() are direct and clear.
-        - nx.density(G) correctly calculates graph density, replacing the manual formula.
+        OPTIMIZED: Calculates snapshot info directly from tensors without NetworkX conversion.
         """
         snapshot = self.graph_snapshots[snapshot_index]
-        G = self.graph_snapshot_to_networkx(snapshot_index)
+        
+        num_nodes = snapshot.num_nodes
+        num_edges = snapshot.num_edges
 
-        num_nodes = G.number_of_nodes()
-        num_edges = G.number_of_edges()
+        # For a directed graph, density = M / (N * (N - 1))
+        # where M is number of edges, N is number of nodes.
+        if num_nodes > 1:
+            connectivity = num_edges / (num_nodes * (num_nodes - 1))
+        else:
+            connectivity = 0.0
 
         up_target = sum(snapshot.y > 0).item()
         down_target = num_nodes - up_target if num_nodes > 0 else 0
         up_ratio = up_target / num_nodes if num_nodes > 0 else 0
-
-        # Use the standard NetworkX function for graph density (connectivity)
-        connectivity = nx.density(G)
 
         return {
             "snapshot_index": snapshot_index,
@@ -204,44 +205,64 @@ class MarketAnalyzer():
         """Returns snapshot info as a pandas DataFrame."""
         return pd.DataFrame(self.get_snapshots_info())
 
-    def get_degree_dist(self) -> tuple[list, list, list, list]:
+    def get_degree_dist(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
-        REFACTORED: Calculates in-degree and out-degree distributions for the directed graph.
-        This avoids creating full adjacency matrices and is more memory-efficient.
+        OPTIMIZED: Calculates degree distributions directly from PyG tensors
+        without converting to NetworkX graphs, which is much faster and more memory-efficient.
         """
-        in_degrees = []
-        out_degrees = []
-        weighted_in_degrees = []
-        weighted_out_degrees = []
+        num_all_nodes = self.num_nodes * self.num_snapshots
         
-        graphs = self.graph_snapshots_to_networkx()
+        # Initialize arrays to hold degree values for all nodes across all snapshots
+        all_in_degrees = np.zeros(num_all_nodes, dtype=np.int32)
+        all_out_degrees = np.zeros(num_all_nodes, dtype=np.int32)
+        all_weighted_in_degrees = np.zeros(num_all_nodes, dtype=np.float32)
+        all_weighted_out_degrees = np.zeros(num_all_nodes, dtype=np.float32)
 
-        for G in graphs:
-            # In-degree and Out-degree (unweighted)
-            in_degrees.extend([d for n, d in G.in_degree()])
-            out_degrees.extend([d for n, d in G.out_degree()])
+        for i, snapshot in enumerate(self.graph_snapshots):
+            start_idx = i * self.num_nodes
+            end_idx = start_idx + self.num_nodes
             
-            # Weighted In-degree and Out-degree
-            weighted_in_degrees.extend([d for n, d in G.in_degree(weight='weight')])
-            weighted_out_degrees.extend([d for n, d in G.out_degree(weight='weight')])
+            edge_index = snapshot.edge_index
+            edge_attr = snapshot.edge_attr.squeeze()
 
-        return in_degrees, out_degrees, weighted_in_degrees, weighted_out_degrees
+            # Unweighted degrees
+            # In-degree: Count occurrences of each node index in the destination (target) part of edge_index
+            in_degree = np.bincount(edge_index[1].numpy(), minlength=self.num_nodes)
+            # Out-degree: Count occurrences in the source part of edge_index
+            out_degree = np.bincount(edge_index[0].numpy(), minlength=self.num_nodes)
+            
+            all_in_degrees[start_idx:end_idx] = in_degree
+            all_out_degrees[start_idx:end_idx] = out_degree
+
+            # Weighted degrees
+            # Weighted In-degree: Sum of weights for incoming edges
+            weighted_in_degree = np.zeros(self.num_nodes, dtype=np.float32)
+            np.add.at(weighted_in_degree, edge_index[1].numpy(), edge_attr.numpy())
+            all_weighted_in_degrees[start_idx:end_idx] = weighted_in_degree
+            
+            # Weighted Out-degree: Sum of weights for outgoing edges
+            weighted_out_degree = np.zeros(self.num_nodes, dtype=np.float32)
+            np.add.at(weighted_out_degree, edge_index[0].numpy(), edge_attr.numpy())
+            all_weighted_out_degrees[start_idx:end_idx] = weighted_out_degree
+
+        return all_in_degrees, all_out_degrees, all_weighted_in_degrees, all_weighted_out_degrees
 
     def get_homophily_score(self, snapshot_index: int) -> float:
         """
-        REFACTORED: Uses a NetworkX graph to iterate over edges.
-        This simplifies the logic by abstracting away the edge_index array.
+        OPTIMIZED: Calculates homophily directly from tensors.
         """
         snapshot = self.graph_snapshots[snapshot_index]
         targets = snapshot.y.numpy()
-        G = self.graph_snapshot_to_networkx(snapshot_index)
+        edge_index = snapshot.edge_index.numpy()
 
-        total_edges = G.number_of_edges()
+        total_edges = snapshot.num_edges
         if total_edges == 0:
             return 0.0
 
         # Count edges where connected nodes have the same class/label
-        homophilous_edges = sum(1 for u, v in G.edges() if targets[u] == targets[v])
+        source_labels = targets[edge_index[0]]
+        target_labels = targets[edge_index[1]]
+        homophilous_edges = np.sum(source_labels == target_labels)
             
         return homophilous_edges / total_edges
 
@@ -318,58 +339,53 @@ class MarketAnalyzer():
     
     def get_connectivity(self) -> float:
         """
-        Calculates the average graph connectivity (density) across all snapshots.
+        OPTIMIZED: Calculates average graph connectivity (density) across all snapshots
+        without creating a list of NetworkX graphs.
         """
-        all_graphs = self.graph_snapshots_to_networkx()
-        if not all_graphs:
+        if self.num_snapshots == 0:
             return 0.0
         
-        total_connectivity = sum(nx.density(G) for G in all_graphs)
-        return total_connectivity / len(all_graphs)
+        total_connectivity = 0.0
+        for snapshot in self.graph_snapshots:
+            num_nodes = snapshot.num_nodes
+            num_edges = snapshot.num_edges
+            if num_nodes > 1:
+                total_connectivity += num_edges / (num_nodes * (num_nodes - 1))
+        
+        return total_connectivity / self.num_snapshots
     
     def get_average_node_degrees(self) -> pd.DataFrame:
         """
-        Calculates the average in-degree and out-degree for each node across all snapshots.
-        
-        Returns:
-            pd.DataFrame: A DataFrame with columns ['node_idx', 'ticker', 
-                                                 'avg_in_degree', 'avg_out_degree', 
-                                                 'avg_weighted_in_degree', 'avg_weighted_out_degree'].
+        OPTIMIZED: Calculates the average in-degree and out-degree for each node
+        across all snapshots using vectorized operations.
         """
-        num_nodes = self.num_nodes
-        in_degrees = np.zeros(num_nodes)
-        out_degrees = np.zeros(num_nodes)
-        weighted_in_degrees = np.zeros(num_nodes)
-        weighted_out_degrees = np.zeros(num_nodes)
+        # Get the total degrees for all nodes across all snapshots
+        in_degrees, out_degrees, weighted_in_degrees, weighted_out_degrees = self.get_degree_dist()
         
-        graphs = self.graph_snapshots_to_networkx()
-        num_snapshots = len(graphs)
+        # Reshape the flat arrays into (num_snapshots, num_nodes)
+        in_degrees_reshaped = in_degrees.reshape(self.num_snapshots, self.num_nodes)
+        out_degrees_reshaped = out_degrees.reshape(self.num_snapshots, self.num_nodes)
+        weighted_in_reshaped = weighted_in_degrees.reshape(self.num_snapshots, self.num_nodes)
+        weighted_out_reshaped = weighted_out_degrees.reshape(self.num_snapshots, self.num_nodes)
 
-        if num_snapshots == 0:
-            return pd.DataFrame()
+        # Calculate the mean across the snapshots (axis 0)
+        avg_in_degree = in_degrees_reshaped.mean(axis=0)
+        avg_out_degree = out_degrees_reshaped.mean(axis=0)
+        avg_weighted_in_degree = weighted_in_reshaped.mean(axis=0)
+        avg_weighted_out_degree = weighted_out_reshaped.mean(axis=0)
 
-        for G in graphs:
-            for i in range(num_nodes):
-                in_degrees[i] += G.in_degree(i)
-                out_degrees[i] += G.out_degree(i)
-                weighted_in_degrees[i] += G.in_degree(i, weight='weight')
-                weighted_out_degrees[i] += G.out_degree(i, weight='weight')
-        
-        avg_in_degrees = in_degrees / num_snapshots
-        avg_out_degrees = out_degrees / num_snapshots
-        avg_weighted_in_degrees = weighted_in_degrees / num_snapshots
-        avg_weighted_out_degrees = weighted_out_degrees / num_snapshots
-
+        # Create a DataFrame for the results
         degree_df = pd.DataFrame({
-            'node_idx': range(num_nodes),
-            'ticker': [self.index_to_stock.get(i, f"Node_{i}") for i in range(num_nodes)],
-            'avg_in_degree': avg_in_degrees,
-            'avg_out_degree': avg_out_degrees,
-            'avg_weighted_in_degree': avg_weighted_in_degrees,
-            'avg_weighted_out_degree': avg_weighted_out_degrees
+            'node_idx': range(self.num_nodes),
+            'ticker': [self.index_to_stock.get(i, f'Node_{i}') for i in range(self.num_nodes)],
+            'avg_in_degree': avg_in_degree,
+            'avg_out_degree': avg_out_degree,
+            'avg_weighted_in_degree': avg_weighted_in_degree,
+            'avg_weighted_out_degree': avg_weighted_out_degree
         })
         
         return degree_df
+        
 
 # --- UNCHANGED PLOTTING AND COMPARISON FUNCTIONS ---
 

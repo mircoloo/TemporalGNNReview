@@ -235,8 +235,14 @@ def main(args: argparse.Namespace) -> None:
         print(f"Model parameters: {sum([p.numel() for p in model_DTML.parameters()]):,}")
         print(f"Learning rate: {train_param['learning_rate']}, weight decay: {train_param['weight_decay']}")
         print(f"Batch size: {batch_size}, Epochs: {train_param['epochs']}")
-        runner = DTMLRunner(model_DTML, device, market_name)
-
+        runner = DTMLRunner(model_DTML, device, market_name, dates=[train_sedate, val_sedate, test_sedate], window_size=window_size, market=market)
+        optimizer = optim.Adam(model_DTML.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
+        criterion = nn.BCEWithLogitsLoss()
+        num_epochs = train_param['epochs']
+        runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, n_features, batch_size=batch_size)
+        print("✅ Training finished.")
+        print("\n" + "="*10 + " TESTING " + "="*10)
+        runner.test(test_dataset, batch_size=1)
 
     elif args.model == 'hyperstockgat':
         NCModel = load_model('hyperstockgat')
