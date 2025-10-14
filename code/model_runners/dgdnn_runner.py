@@ -1,66 +1,192 @@
-from sklearn.metrics import recall_score
-from .base_runner import BaseModelRunner
+from pathlib import Path
+from model_runners.base_runner import *
 import torch
 from torch_geometric.utils import to_dense_adj
-from tqdm import tqdm
+import pandas as pd
+from tqdm.auto import tqdm
+from tabulate import tabulate
+from model_runners.base_runner import evaluate_decorator, BaseModelRunner
+from model_runners.models_dataset import DGDNNDataset
 
 class DGDNNRunner(BaseModelRunner):
-    def train(self, train_loader, val_loader, optimizer, criterion, num_epochs, alpha, neighbor_distance_regularizer, theta_regularizer, window_size, num_nodes, use_validation=True):
-        self.model.train()
-        for epoch in tqdm(range(num_epochs + 1)):
-            train_loss = 0.0
-            for train_sample in train_loader:
-                if train_sample.x.shape[-1] != 5 * window_size:
-                    print(f"Warning: Skipping sample with incorrect shape: {train_sample.x.shape}")
-                    continue
-                train_sample = train_sample.to(self.device)
-                optimizer.zero_grad()
-                A = to_dense_adj(train_sample.edge_index, batch=train_sample.batch, edge_attr=train_sample.edge_attr, max_num_nodes=num_nodes).squeeze(0)
-                C = train_sample.y.unsqueeze(dim=1).float()
-                outputs = self.model(train_sample.x, A)
-                loss = criterion(outputs, C) \
-                       - alpha * neighbor_distance_regularizer(self.model.theta) \
-                       + theta_regularizer(self.model.theta)
-                loss.backward()
-                optimizer.step()
-                train_loss += loss.item()
-            if use_validation and (epoch % 1 == 0):
-                val_loss, val_acc, val_f1, val_mcc = 0.0, 0.0, 0.0, 0.0
-                self.model.eval()
-                n_val = 0
-                from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef
-                with torch.no_grad():
-                    for val_sample in val_loader:
-                        if val_sample.x.shape[-1] != 5 * window_size: continue
-                        val_sample = val_sample.to(self.device)
-                        A = to_dense_adj(val_sample.edge_index, batch=val_sample.batch, edge_attr=val_sample.edge_attr, max_num_nodes=num_nodes).squeeze(0)
-                        out = self.model(val_sample.x, A)
-                        y_true = val_sample.y.detach().cpu()
-                        y_pred = (out > 0).float().detach().cpu().squeeze()
-                        val_loss += criterion(out, val_sample.y.unsqueeze(1).float()).item()
-                        val_acc += accuracy_score(y_true, y_pred)
-                        val_f1 += f1_score(y_true, y_pred, zero_division=0)
-                        val_mcc += matthews_corrcoef(y_true, y_pred)
-                        val_recall = recall_score(y_true, y_pred, zero_division=0)
-                        n_val += 1
-                if n_val > 0:
-                    avg_val_loss = val_loss / n_val
-                    avg_val_acc = val_acc / n_val
-                    avg_val_f1 = val_f1 / n_val
-                    avg_val_mcc = val_mcc / n_val
-                    print(f"Epoch {epoch}: Val Loss: {avg_val_loss:.4f}, Val Acc: {avg_val_acc:.4f}, Val F1: {avg_val_f1:.4f}, Val MCC: {avg_val_mcc:.4f}, Val Recall: {val_recall:.4f}")
-                self.model.train()
 
-    def test(self, test_loader, window_size, num_nodes):
+    def __init__(self, model, device, market_name):
+        super().__init__(model, device, market_name)
+        self.model_name = 'DGDNN'
+
+    def train(self, train_dataset, 
+              val_dataset, 
+              optimizer, 
+              criterion, 
+              num_epochs, 
+              alpha, 
+              window_size, num_nodes, 
+              batch_size=32, 
+              use_validation=True):
+
+        self.optimizer, \
+        self.criterion, \
+        self.num_epochs, \
+        self.alpha, \
+        self.window_size, \
+        self.num_nodes, \
+        self.batch_size = optimizer, criterion, num_epochs, alpha, window_size, num_nodes, batch_size
+        
+        
+        # Create organized TensorBoard writer
+        train_set = DGDNNDataset(train_dataset)
+        val_set = DGDNNDataset(val_dataset)
+        # Use actual batching
+        train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=batch_size)
+        
+        # Update training loop to handle None batches
+        for epoch in range(num_epochs + 1):
+            train_loss = 0.0
+            n_train = 0
+            
+            # Training loop
+            for batch in train_loader:
+                if batch is None:
+                    continue
+                batch = batch.to(self.device)
+                number_of_features = batch.x.size(-1)
+
+                X = batch.x.view(-1, num_nodes, number_of_features)  # [B, N, F]
+                A = to_dense_adj(
+                    batch.edge_index, 
+                    batch=batch.batch,
+                    edge_attr=batch.edge_attr,
+                    max_num_nodes=num_nodes
+                )
+                optimizer.zero_grad()
+                # Forward pass with batched inputs
+                outputs = self.model(X, A)  # [B, N, 1]
+                targets = batch.y.view(-1, num_nodes, 1).float()  # [B, N, 1]
+                # Compute loss
+                train_loss = criterion(outputs, targets)
+                if alpha > 0:
+                    train_loss = train_loss + alpha * neighbor_distance_regularizer(self.model.theta) \
+                          + theta_regularizer(self.model.theta)
+                
+                train_loss.backward()
+                optimizer.step()
+                
+                train_loss += train_loss.item()
+                n_train += 1
+
+            # Training metrics
+            avg_train_loss = train_loss / n_train
+                
+            # Validation loop
+            if use_validation and (epoch % 1 == 0):
+                self.model.eval()
+                val_metrics = {
+                    'loss': 0.0, 'acc': 0.0, 'prec': 0.0, 
+                    'f1': 0.0, 'mcc': 0.0, 'rec': 0.0
+                }
+                n_val = 0
+                
+                with torch.no_grad():
+                    for batch in val_loader:                            
+                        batch = batch.to(self.device)
+                        X = batch.x.view(-1, num_nodes, 5 * window_size)
+                        A = to_dense_adj(batch.edge_index, 
+                                       batch=batch.batch,
+                                       edge_attr=batch.edge_attr,
+                                       max_num_nodes=num_nodes)
+                        
+                        outputs = self.model(X, A)
+                        targets = batch.y.view(-1, num_nodes, 1).float()
+                        
+                        # Compute metrics for batch
+                        val_metrics['loss'] += criterion(outputs, targets).item()
+                        
+                        # Convert predictions to binary
+                        preds = (torch.sigmoid(outputs) > 0.5).int().cpu()
+                        targets = targets.int().cpu()
+                        
+                        # Compute metrics
+                        val_metrics['acc'] += accuracy_score(
+                            targets.flatten(), preds.flatten())
+                        val_metrics['f1'] += f1_score(
+                            targets.flatten(), preds.flatten(), zero_division=0)
+                        val_metrics['rec'] += recall_score(
+                            targets.flatten(), preds.flatten())
+                        val_metrics['mcc'] += matthews_corrcoef(
+                            targets.flatten(), preds.flatten())
+                        val_metrics['prec'] += precision_score(
+                            targets.flatten(), preds.flatten(), zero_division=0)
+                        
+                        n_val += 1
+
+                # Average metrics
+                if n_val > 0:
+                    for k in val_metrics:
+                        val_metrics[k] /= n_val
+                    
+                    # Print results in a table format
+                    if epoch % 5 == 0 or epoch == num_epochs:
+                        headers = ["Metric", "Value"]
+                        table_data = [
+                            ["Train Loss", f"{avg_train_loss:.4f}"],
+                            ["Val Loss", f"{val_metrics['loss']:.4f}"],
+                            ["Accuracy", f"{val_metrics['acc']:.4f}"],
+                            ["Precision", f"{val_metrics['prec']:.4f}"],
+                            ["Recall", f"{val_metrics['rec']:.4f}"],
+                            ["F1 Score", f"{val_metrics['f1']:.4f}"],
+                            ["MCC", f"{val_metrics['mcc']:.4f}"]
+                        ]
+                        
+                        print(f"\nEpoch {epoch+1}/{num_epochs} Results:")
+                        print(tabulate(table_data, headers=headers, tablefmt="pretty"))
+                        print("\n")
+
+                self.model.train()
+                
+    
+    
+    @evaluate_decorator
+    def test(self, test_dataset, window_size, num_nodes, batch_size=1):
+        test_dataset = DGDNNDataset(test_dataset)  
+        test_loader = DataLoader(test_dataset, batch_size=batch_size)
         self.model.eval()
-        all_logits = torch.tensor([]).to(self.device)
-        all_labels = torch.tensor([]).to(self.device)
+        all_preds = []
+        all_labels = []
+        
         with torch.no_grad():
-            for test_sample in test_loader:
-                if test_sample.x.shape[-1] != 5 * window_size: continue
-                test_sample = test_sample.to(self.device)
-                A = to_dense_adj(test_sample.edge_index, batch=test_sample.batch, edge_attr=test_sample.edge_attr, max_num_nodes=num_nodes).squeeze(0)
-                out = self.model(test_sample.x, A)
-                all_logits = torch.cat((all_logits, out.squeeze()), dim=0)
-                all_labels = torch.cat((all_labels, test_sample.y), dim=0)
-        return all_logits, all_labels
+            for batch in test_loader:
+                if batch.x.shape[-1] != 5 * window_size:
+                    continue
+                    
+                batch = batch.to(self.device)
+                X = batch.x.view(-1, num_nodes, 5 * window_size)
+                A = to_dense_adj(batch.edge_index, 
+                               batch=batch.batch,
+                               edge_attr=batch.edge_attr,
+                               max_num_nodes=num_nodes)
+                
+                outputs = self.model(X, A)
+                preds = (torch.sigmoid(outputs) > 0.5).int().cpu()
+                all_preds.extend(preds.flatten().tolist())
+                all_labels.extend(batch.y.cpu().flatten().tolist())
+
+        return {'preds': np.array(all_preds), 'targets': np.array(all_labels)}
+
+# Define optimizer and objective function
+def theta_regularizer(theta):
+    row_sums = torch.sum(theta, dim=-1)
+    ones = torch.ones_like(row_sums)
+    return torch.sum(torch.abs(row_sums - ones))
+
+def neighbor_distance_regularizer(theta):
+    box = torch.sum(theta, dim=-1)
+    result = torch.zeros_like(theta)
+
+    for idx, row in enumerate(theta):
+        for i, j in enumerate(row):
+            result[idx, i] = i * j
+
+    result_sum = torch.sum(result, dim=1)
+    return torch.sum(result / result_sum[:, None])
+
