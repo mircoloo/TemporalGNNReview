@@ -65,7 +65,6 @@ class DGDNNRunner(BaseModelRunner):
                 targets = batch.y.view(-1, num_nodes, 1).float()  # [B, N, 1]
                 # Compute loss
                 train_loss = criterion(outputs, targets) + theta_regularizer(self.model.theta) - alpha * neighbor_distance_regularizer(self.model.theta)
-                print(f"All loss components: MSE={criterion(outputs, targets).item():.4f}, Theta Reg={theta_regularizer(self.model.theta).item():.4f}, Neighbor Dist Reg={neighbor_distance_regularizer(self.model.theta).item():.4f}")
                 
                 train_loss.backward()
                 optimizer.step()

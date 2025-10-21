@@ -27,7 +27,7 @@ model_params:
     # The output size for ALL attention layers. From paper's "embedding dimension".
     embedding_output_size: 128
     # The size of the internal MLP inside the attention block. 256 is a sensible default.
-    embedding_hidden_size: 256
+    embedding_hidden_size: 1024
     # The size the raw features are projected to. Must be divisible by num_heads (3). 96 is a good choice.
     raw_feature_size: 96
 
