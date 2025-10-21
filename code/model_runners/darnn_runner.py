@@ -15,7 +15,6 @@ class DARNNRunner(BaseModelRunner):
 
 
     def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, seq_length, batch_size=32):
-        writer = SummaryWriter('runs/')
         train_set = DARNNDataset(train_dataset)
         val_set = DARNNDataset(val_dataset)
         

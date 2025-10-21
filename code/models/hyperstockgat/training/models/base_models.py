@@ -89,7 +89,7 @@ class NCModel(BaseModel):
         self.weights = torch.Tensor([1.] * args.n_classes)
         if not args.cuda == -1:
             self.weights = self.weights.to(args.device)
-
+        print("HyperStockGAT model created with args :", args)
     def decode(self, h, adj):
         output = self.decoder.decode(h, adj)
         return F.leaky_relu(output, 0.2)

@@ -75,19 +75,19 @@ class GraphWaveNetRunner(BaseModelRunner):
                         x = x.to(self.device)
                         y = y.to(self.device)
                         
-                        outputs = self.model(x)
+                        output = self.model(x)
                         output_for_loss = output[:, :, :, -1]  # Take last timestep
                         predict = output_for_loss.squeeze(1)  # Remove feature dimension
                         targets = y.float().squeeze()  # [B, num_nodes]
-                        outputs = output.squeeze()
+                        output = output.squeeze()
                         y = y.squeeze()
                         #print(f"Validation batch x.shape: {x.shape}, y.shape: {y.shape}, outputs.shape: {outputs.shape}, predict.shape: {predict.shape}, targets.shape: {targets.shape}")
                         # Compute metrics for batch
                         #print(f"{outputs.shape=}, {targets.shape=}")
-                        val_metrics['loss'] += criterion(outputs, targets).item()
-                        
+                        val_metrics['loss'] += criterion(output, targets).item()
+
                         # Convert predictions to binary
-                        preds = (torch.sigmoid(outputs) > 0.5).int().cpu()
+                        preds = (torch.sigmoid(output) > 0.5).int().cpu()
                         targets = targets.int().cpu()
                         
                         # Compute metrics
@@ -131,7 +131,7 @@ class GraphWaveNetRunner(BaseModelRunner):
     @evaluate_decorator
     def test(self, test_dataset, seq_length, num_features, batch_size=32, config=None, threshold=0.5):
         test_set = GraphWaveNetDataset(test_dataset)
-        test_loader = DataLoader(test_set, batch_size=batch_size)
+        test_loader = DataLoader(test_set, batch_size=1)
         
         self.model.eval()
         all_preds = []
@@ -142,12 +142,19 @@ class GraphWaveNetRunner(BaseModelRunner):
                 x, y = batch
                 x = x.to(self.device)
                 y = y.to(self.device)
-
-                output = self.model(x)
-                output_for_loss = output[:, :, :, -1]
-                predict = output_for_loss.squeeze(1)
                 
-                preds = (torch.sigmoid(predict) > threshold).int()
+                output = self.model(x)
+                output_for_loss = output[:, :, :, -1]  # Take last timestep
+                predict = output_for_loss.squeeze(1)  # Remove feature dimension
+                targets = y.float().squeeze()  # [B, num_nodes]
+                output = output.squeeze()
+                y = y.squeeze()
+                #print(f"Validation batch x.shape: {x.shape}, y.shape: {y.shape}, outputs.shape: {outputs.shape}, predict.shape: {predict.shape}, targets.shape: {targets.shape}")
+                # Compute metrics for batch
+                #print(f"{outputs.shape=}, {targets.shape=}")
+                # Convert predictions to binary
+                preds = (torch.sigmoid(output) > 0.5).int().cpu()
+                targets = targets.int().cpu()
                 all_preds.append(preds.cpu())
                 all_targets.append(y.cpu())
 
@@ -179,12 +186,6 @@ class GraphWaveNetRunner(BaseModelRunner):
                 'learning_rate': config.get('learning_rate', None),
                 'optimizer': config.get('optimizer', 'Adam')
             }
-            
-            self.log_experiment(
-                config=config,
-                dataset_info=dataset_info,
-                train_params=train_params,
-                test_metrics=test_metrics
-            )
+
 
         return {'preds': np.array(y_pred), 'targets': np.array(y_true)}

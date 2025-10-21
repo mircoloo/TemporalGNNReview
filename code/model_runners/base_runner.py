@@ -47,6 +47,7 @@ def evaluate_decorator(func):
                 print(f"Detected {'binary classification' if is_binary_classification else 'regression'} task based on target values.")
                 if is_binary_classification:
                     # Classification metrics
+                    print("targets.shape:", targets.shape, "preds.shape:", preds.shape)
                     acc = accuracy_score(targets, preds)
                     prec = precision_score(targets, preds, zero_division=0)
                     rec = recall_score(targets, preds, zero_division=0)

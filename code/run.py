@@ -113,6 +113,7 @@ def main(args: argparse.Namespace) -> None:
         print("DGDNN model selected. Running training and evaluation pipeline.")
         DGDNN = load_model('DGDNN')
         model_param = model_param['DGDNN']
+        alpha = model_param.get('neighbour_radius_coeff', 0.0)
         model_DGDNN = DGDNN(
             diffusion_size=model_param['diffusion_size'],
             embedding_size=model_param['embedding_size'],
@@ -135,9 +136,9 @@ def main(args: argparse.Namespace) -> None:
         optimizer = optim.Adam(model_DGDNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
         criterion = nn.BCEWithLogitsLoss()
         
+        
         num_epochs = train_param['epochs']
         
-        alpha = train_param.get('neighbour_radius_coeff', 0.0)
 
         # Train the model
         runner.train(
@@ -162,6 +163,7 @@ def main(args: argparse.Namespace) -> None:
         GWN = load_model('GraphWaveNet')
         model_param = model_param['GraphWaveNet']
         
+        print(model_param)
         
         # Prepare model config
         model_config = {
@@ -242,7 +244,7 @@ def main(args: argparse.Namespace) -> None:
         runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, n_features, batch_size=batch_size)
         print("✅ Training finished.")
         print("\n" + "="*10 + " TESTING " + "="*10)
-        runner.test(test_dataset, batch_size=1)
+        
 
     elif args.model == 'hyperstockgat':
         NCModel = load_model('hyperstockgat')
@@ -321,7 +323,7 @@ def main(args: argparse.Namespace) -> None:
         print("✅ Training finished.")
 
         print("\n" + "="*10 + " TESTING " + "="*10)
-        y_pred, y_true = runner.test(test_dataset, window_size, 5)
+        runner.test(test_dataset)
    
 
 

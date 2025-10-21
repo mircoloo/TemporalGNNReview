@@ -119,7 +119,7 @@ class HyperStockGATRunner(BaseModelRunner):
     
     
     @evaluate_decorator
-    def test(self, test_dataset, seq_length, num_features):
+    def test(self, test_dataset):
         test_dataset = HyperStockGATDataset(test_dataset)  
         test_loader = DataLoader(test_dataset, batch_size=1)
         self.model.eval()
@@ -136,6 +136,6 @@ class HyperStockGATRunner(BaseModelRunner):
                 outputs = self.model.decode(emb, adj)
                 preds = (torch.sigmoid(outputs) > 0.5).int().cpu()
                 all_preds.extend(preds.flatten().tolist())
-                all_labels.extend(batch.y.cpu().flatten().tolist())
+                all_labels.extend(y.cpu().flatten().tolist())
 
         return {'preds': np.array(all_preds), 'targets': np.array(all_labels)}
