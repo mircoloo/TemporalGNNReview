@@ -1,4 +1,7 @@
 from pathlib import Path
+import itertools
+import math
+import random
 import torch
 import json
 from matplotlib import pyplot as plt
@@ -385,6 +388,80 @@ class MarketAnalyzer():
         })
         
         return degree_df
+
+    def compute_snapshot_hyperbolicity(self, snapshot_index: int, sample_size: int | None = None, random_state: int | None = None) -> float:
+        """Compute the graph hyperbolicity for a single snapshot.
+
+        The exact computation inspects every 4-tuple of distinct nodes when ``sample_size``
+        is ``None`` or larger than the total number of combinations. For larger graphs you
+        can provide ``sample_size`` to obtain an approximate estimate via random sampling.
+        """
+
+        if snapshot_index < 0 or snapshot_index >= self.num_snapshots:
+            raise ValueError(f"Snapshot index {snapshot_index} is out of range (0-{self.num_snapshots - 1}).")
+
+        G_directed = self.graph_snapshot_to_networkx(snapshot_index)
+        if G_directed.number_of_nodes() < 4:
+            return 0.0
+
+        # Convert to an undirected view for distance computation; ignore weights for geodesic length.
+        G = G_directed.to_undirected()
+        length = dict(nx.all_pairs_shortest_path_length(G))
+
+        nodes = list(G.nodes())
+        total_quads = math.comb(len(nodes), 4)
+        rng = random.Random(random_state)
+
+        if sample_size is None or sample_size >= total_quads:
+            quads_iter = itertools.combinations(nodes, 4)
+        else:
+            sampled = set()
+            quads_iter = []
+            while len(quads_iter) < sample_size:
+                quad = tuple(sorted(rng.sample(nodes, 4)))
+                if quad in sampled:
+                    continue
+                sampled.add(quad)
+                quads_iter.append(quad)
+
+        max_hyp = 0.0
+
+        def dist(u: int, v: int) -> float:
+            try:
+                return length[u][v]
+            except KeyError:
+                return math.inf
+
+        for quad in quads_iter:
+            a, b, c, d = quad
+            distances = {
+                'S1': dist(a, b) + dist(d, c),
+                'S2': dist(a, c) + dist(b, d),
+                'S3': dist(a, d) + dist(b, c)
+            }
+
+            if math.inf in distances.values():
+                continue  # Skip disconnected selections.
+
+            largest_two = sorted(distances.values(), reverse=True)[:2]
+            hyp_value = largest_two[0] - largest_two[1]
+            if hyp_value > max_hyp:
+                max_hyp = hyp_value
+
+        return 0.5 * max_hyp
+
+    def compute_average_hyperbolicity(self, sample_size: int | None = None, random_state: int | None = None) -> float:
+        """Compute the average hyperbolicity across all snapshots."""
+        if self.num_snapshots == 0:
+            return 0.0
+
+        scores = []
+        for idx in range(self.num_snapshots):
+            score = self.compute_snapshot_hyperbolicity(idx, sample_size=sample_size, random_state=random_state)
+            if not math.isnan(score):
+                scores.append(score)
+
+        return float(np.mean(scores)) if scores else 0.0
         
 
 # --- UNCHANGED PLOTTING AND COMPARISON FUNCTIONS ---

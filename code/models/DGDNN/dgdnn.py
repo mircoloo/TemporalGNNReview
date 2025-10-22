@@ -64,6 +64,8 @@ class DGDNN(nn.Module):
             GeneralizedGraphDiffusion(diffusion_size[i], diffusion_size[i + 1], active[i])
             for i in range(len(diffusion_size) - 1)
         ])
+        
+        
 
 
 
@@ -72,7 +74,7 @@ class DGDNN(nn.Module):
         # It uses multi-head attention (CatMultiAttn) to combine features at different hierarchical levels. [cite: 117, 118]
         self.cat_attn_layers = nn.ModuleList([
             CatMultiAttn(
-                input_time=embedding_size[i],        # Expected concatenated dimension (h and h_prime).
+                input_time=embedding_size[i],        # Expected concatenated dimension (h and h_prime) = diffusion_size[i] + embedding_output_size.
                 num_heads=num_heads,                 # Number of attention heads.
                 hidden_dim=embedding_hidden_size,    # Hidden dimension for internal projection in attention.
                 output_dim=embedding_output_size,    # Output dimension of the attention layer.
