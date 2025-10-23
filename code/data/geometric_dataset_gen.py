@@ -27,7 +27,8 @@ class MyDataset(Dataset):
                  fast_approx, 
                  normalize_method: str = '',
                 train_dates: List[str] = '',
-                minmax_normalize_adj: bool = True):
+                minmax_normalize_adj: bool = True,
+                threshold: float = 0.0):
         
         super().__init__()
         
@@ -36,6 +37,7 @@ class MyDataset(Dataset):
         print(f"Creating {market} {dataset_type.upper()} dataset ({start} to {end})")
         print(f"Normalization method: {normalize_method if normalize_method else 'None'}")
         print(f"Window size: {window} days")
+        print(f"Min-Max normalize adjacency matrix: {minmax_normalize_adj} with threshold: {threshold}")
         print(f"{'='*80}\n")
         
         self.market = market
@@ -46,7 +48,7 @@ class MyDataset(Dataset):
         self.window = window
         self.normalize_method = normalize_method
         self.global_data_search_cutoff = '2025-07-05'
-        self.threshold = 0.0
+        self.threshold = threshold
 
 
         #params for minmax normalizing adj matrix
