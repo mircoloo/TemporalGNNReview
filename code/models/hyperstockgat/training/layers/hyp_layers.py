@@ -71,6 +71,8 @@ class HyperbolicGraphConvolution(nn.Module):
         h = self.linear.forward(x)
         h = self.agg.forward(h, adj)
         h = self.hyp_act.forward(h)
+        if h.isnan().any():
+            raise ValueError("NaN detected in HGC output!")
         output = h, adj
         return output
 
@@ -136,7 +138,8 @@ class HypAgg(Module):
             adj_att = self.att(x_tangent, adj)
             support_t = torch.matmul(adj_att, x_tangent)
         else:
-            support_t = torch.spmm(adj, x_tangent)
+            #support_t = torch.spmm(adj, x_tangent)
+            support_t = torch.matmul(adj, x_tangent)
         output = self.manifold.proj(self.manifold.expmap0(support_t, c=self.c), c=self.c)
         return output
 

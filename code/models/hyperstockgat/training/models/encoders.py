@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import models.hyperstockgat.training.manifolds as manifolds
+import models.hyperstockgat.training.manifolds
 from models.hyperstockgat.training.layers.att_layers import GraphAttentionLayer
 import models.hyperstockgat.training.layers.hyp_layers as hyp_layers
 from models.hyperstockgat.training.layers.layers import GraphConvolution, Linear, get_dim_act
@@ -23,7 +23,7 @@ class Encoder(nn.Module):
 
     def encode(self, x, adj):
         if self.encode_graph:
-            input = (x, adj.squeeze())  
+            input = (x, adj)
             output, _ = self.layers.forward(input)
         else:
             output = self.layers.forward(x)
@@ -93,48 +93,36 @@ class GCN(Encoder):
 class Temporal_Attention_layer(nn.Module):
     def __init__(self, in_channels, num_of_vertices, num_of_timesteps):
         super(Temporal_Attention_layer, self).__init__()
-        # self.U1 = nn.Parameter(torch.FloatTensor(num_of_vertices)) # N
-        # self.U2 = nn.Parameter(torch.FloatTensor(in_channels, num_of_vertices)) # F x N
-        # self.U3 = nn.Parameter(torch.FloatTensor(in_channels)) # F
-        # self.be = nn.Parameter(torch.FloatTensor(1, num_of_timesteps, num_of_timesteps)) # 1 x T x T
-        # self.Ve = nn.Parameter(torch.FloatTensor(num_of_timesteps, num_of_timesteps)) # T x T
-        self.U1 = nn.Parameter(torch.empty(num_of_vertices))
-        nn.init.xavier_uniform_(self.U1.unsqueeze(0))  # expand to 2D for Xavier, then squeeze back
+        self.U1 = nn.Parameter(torch.FloatTensor(num_of_vertices))
+        self.U2 = nn.Parameter(torch.FloatTensor(in_channels, num_of_vertices))
+        self.U3 = nn.Parameter(torch.FloatTensor(in_channels))
+        self.be = nn.Parameter(torch.FloatTensor(1, num_of_timesteps, num_of_timesteps))
+        self.Ve = nn.Parameter(torch.FloatTensor(num_of_timesteps, num_of_timesteps))
 
-        self.U2 = nn.Parameter(torch.empty(in_channels, num_of_vertices))
         nn.init.xavier_uniform_(self.U2)
-
-        self.U3 = nn.Parameter(torch.empty(in_channels))
-        nn.init.xavier_uniform_(self.U3.unsqueeze(0))  # same trick as U1
-
-        self.be = nn.Parameter(torch.empty(1, num_of_timesteps, num_of_timesteps))
-        nn.init.zeros_(self.be)  # often good to start biases at 0
-
-        self.Ve = nn.Parameter(torch.empty(num_of_timesteps, num_of_timesteps))
         nn.init.xavier_uniform_(self.Ve)
-
-
-
+        nn.init.uniform_(self.U1, -0.1, 0.1)
+        nn.init.uniform_(self.U3, -0.1, 0.1)
+        nn.init.zeros_(self.be)
     def forward(self, x):
         '''
         :param x: (batch_size, N, F_in, T)
         :return: (B, T, T)
         '''
-        _, num_of_vertices, num_of_features, num_of_timesteps = x.shape
-        # print(self.U1)
-
+        _, N, F, T = x.shape
+        # print(self.U1)        
+        # [1, 14, 5, 128]) torch.Size([128]) torch.Size([5, 128])
         lhs = torch.matmul(torch.matmul(x.permute(0, 3, 2, 1), self.U1), self.U2)
         # x:(B, N, F_in, T) -> (B, T, F_in, N)
         # (B, T, F_in, N)(N) -> (B,T,F_in)
         # (B,T,F_in)(F_in,N)->(B,T,N)
-        # print('lhs',lhs)
         rhs = torch.matmul(self.U3, x)  # (F)(B,N,F,T)->(B, N, T)
         # print('rhs', rhs)
+        
         product = torch.matmul(lhs, rhs)  # (B,T,N)(B,N,T)->(B,T,T)
         # print('product', product)
         E = torch.matmul(self.Ve, torch.sigmoid(product + self.be))  # (B, T, T)
-        # print('E', E)
-        E_normalized = F.softmax(E, dim=1)
+        E_normalized = torch.softmax(E, dim=1)
         # print('E_norm', E_normalized)
         return E_normalized
 
@@ -156,17 +144,20 @@ class HGCN(Encoder):
         super(HGCN, self).__init__(c)
         # self.grup = gru(5,32)
         # self.attention_temp = Attention(32)
-        self.tat = Temporal_Attention_layer(args.feat_dim, args.n_nodes, int(args.l)) # features x num_nodes x num_timesteps [FxNxT]
-        self.tat2 = Temporal_Attention_layer(args.feat_dim, args.n_nodes, int(args.l)) # the second attention, at the end
-        self.manifold = getattr(manifolds, args.manifold)()
+        self.tat = Temporal_Attention_layer(int(args.feat_dim), int(args.n_nodes), int(args.l))
+        self.tat2 = Temporal_Attention_layer(int(args.dim), int(args.n_nodes), int(args.l))
+        self.manifold = getattr(models.hyperstockgat.training.manifolds, args.manifold)()
+        self.n_nodes = args.n_nodes
+        self.feat_dim = args.feat_dim
         assert args.num_layers > 1
-        dims, acts, self.curvatures = hyp_layers.get_dim_act_curv(args)
+        dims, acts, self.curvatures = hyp_layers.get_dim_act_curv(args) # Get dims, acts, curvatures
         self.curvatures.append(self.c)
         hgc_layers = []
-        for i in range(len(dims) - 1):
+        for i in range(len(dims) - 1): # For each dims, create an hyperbolic graph convolution layer
             c_in, c_out = self.curvatures[i], self.curvatures[i + 1]
             in_dim, out_dim = dims[i], dims[i + 1]
             act = acts[i]
+            print(f"Layer {i}: c_in={c_in}, c_out={c_out}, in_dim={in_dim}, out_dim={out_dim}, act={act}")
             hgc_layers.append(
                     hyp_layers.HyperbolicGraphConvolution(
                             self.manifold, in_dim, out_dim, c_in, c_out, args.dropout, act, args.bias, args.use_att
@@ -174,48 +165,32 @@ class HGCN(Encoder):
             )
         self.layers = nn.Sequential(*hgc_layers)
         self.encode_graph = True
-        self.time_conv = nn.Conv2d(int(args.feat_dim), int(args.feat_dim), kernel_size=(1, 3), stride=(1,  1), padding=(0, 1)) #changed to feat_dim from args.l
-        self.time_conv2 = nn.Conv2d(int(args.feat_dim), int(args.feat_dim), kernel_size=(1, 3), stride=(1,  1), padding=(0, 1))
+        self.time_conv = nn.Conv2d(int(args.feat_dim), int(args.feat_dim) , kernel_size=(1, 3), stride=(1,  1), padding=(0, 1))
+        self.time_conv2 = nn.Conv2d(int(args.dim), int(args.dim), kernel_size=(1, 3), stride=(1,  1), padding=(0, 1))
+        
     def encode(self, x, adj):
-        """
-        args: x: (N, F, T) where N is the number of nodes, F is the number of features, T is the number of time steps
-                adj: (N, N) adjacency matrix 
         
-        """
-        #x = x.unsqueeze(0) #add the batch dimension
-        
-
-        x = x.permute(0,1,3,2) # (B, N, F, T)
+        x = x.permute(0,1,3,2)
         batch_size, num_of_vertices, num_of_features, num_of_timesteps = x.shape
-        #print(f"batch_size: {batch_size}, num_of_vertices: {num_of_vertices}, num_of_features: {num_of_features}, num_of_timesteps: {num_of_timesteps}  ")
-        
         temporal_At = self.tat(x)
-        #print(f"temporal_At shape: {temporal_At.shape}" )
-        
         x_TAt = torch.matmul(x.reshape(batch_size, -1, num_of_timesteps), temporal_At).reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
-        #print(f"x_TAt before conv {x_TAt.shape=}")
-        #print(f"self.time_conv weight shape: {self.time_conv.weight.shape}, bias shape: {self.time_conv.bias.shape}")
-        x_TAt_conved = self.time_conv(x_TAt.permute(0, 2, 1, 3))
-        #print(f"x_TAt_conved shape: {x_TAt_conved.shape}")
-        x_TAt = x_TAt_conved.reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
-        # (B, N, F, T) -> (B, F, N, T)
+        x_TAt = self.time_conv(x_TAt.permute(0, 2, 1, 3)).reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
         outputs = []
-        for time_step in range(num_of_timesteps): # for each timestamp
+        for time_step in range(num_of_timesteps):
             y = x_TAt[:,:,:,time_step]
-            y = y.reshape((num_of_vertices, num_of_features)) # (N, F)
+            y = y.reshape((self.n_nodes,self.feat_dim))
             x_tan = self.manifold.proj_tan0(y, self.curvatures[0])
             x_hyp = self.manifold.expmap0(x_tan, c=self.curvatures[0])
             x_hyp = self.manifold.proj(x_hyp, c=self.curvatures[0])
-            #print(f"y shape: {y.shape}, x_tan shape: {x_tan.shape}, x_hyp shape: {x_hyp.shape}")
             temp = super(HGCN, self).encode(x_hyp, adj)
-            outputs.append(temp.reshape(1,num_of_vertices,6))
-        #print(f"outputs length: {len(outputs)}")
+            outputs.append(temp.reshape(1,self.n_nodes,-1))
         spatial_At = torch.stack(outputs).permute(1, 0, 2, 3)
         h = spatial_At.permute(0, 2, 3, 1)
         batch_size, num_of_vertices, num_of_features, num_of_timesteps = h.shape
-        temporal_At = self.tat2(x)
-        x_TAt = torch.matmul(x.reshape(batch_size, -1, num_of_timesteps), temporal_At).reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
-        x_TAt = self.time_conv2(x_TAt.permute(0, 2, 1, 3)).reshape(batch_size, num_of_timesteps,num_of_vertices, num_of_features)
+        temporal_At = self.tat2(h)
+        x_TAt = torch.matmul(h.reshape(batch_size, -1, num_of_timesteps), temporal_At).reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
+        x_TAt = self.time_conv2(x_TAt.permute(0, 2, 1, 3))
+        x_TAt = x_TAt.reshape(batch_size, num_of_timesteps,num_of_vertices, num_of_features)
         return x_TAt
 
 

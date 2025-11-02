@@ -9,11 +9,19 @@ class TimeAxisAttention(nn.Module):
 
     def forward(self, x: torch.tensor, rt_attn=False):
         # x: (D, W, L) # D: number of stocks / W: length of observations / L: number of features
-        o, (h, _) = self.lstm(x) # o: (D, W, H) / h: (1, D, H)
-        score = torch.bmm(o, h.permute(1, 2, 0)) # (D, W, H) x (D, H, 1)
-        tx_attn = torch.softmax(score, 1).squeeze(-1)  # (D, W)        
-        context = torch.bmm(tx_attn.unsqueeze(1), o).squeeze(1)  # (D, 1, W) x (D, W, H)
+        o, (h, _) = self.lstm(x) # o: (D, W, H) / h: (num_layers, D, H)
+        
+        # Take the last layer's hidden state
+        h_last = h[-1]  # (D, H)
+        
+        # Compute attention scores
+        score = torch.bmm(o, h_last.unsqueeze(-1))  # (D, W, H) x (D, H, 1) = (D, W, 1)
+        tx_attn = torch.softmax(score.squeeze(-1), dim=1)  # (D, W)
+        
+        # Compute context vector
+        context = torch.bmm(tx_attn.unsqueeze(1), o).squeeze(1)  # (D, 1, W) x (D, W, H) = (D, H)
         normed_context = self.lnorm(context)
+        
         if rt_attn:
             return normed_context, tx_attn
         else:

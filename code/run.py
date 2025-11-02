@@ -89,13 +89,15 @@ def main(args: argparse.Namespace) -> None:
     print(f"Filtered company list length: {len(filtered_company_list)}")
     norm_method = args.norm.lower() if args.norm else ''
     use_adj_norm = False if args.adjnorm=='False' else True
+    adjnorm_threshold = args.adjnorm_threshold if use_adj_norm else 0.0
+    print(f"Normalization method: {norm_method}, Adjacency normalization: {use_adj_norm}, Threshold: {adjnorm_threshold}")
     # Build or retrieve the datasets
     print("-" * 5, "Building train dataset...", "-" * 5)
-    train_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, train_sedate[0], train_sedate[1], window_size, 'Train', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate, minmax_normalize_adj=use_adj_norm)
+    train_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, train_sedate[0], train_sedate[1], window_size, 'Train', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate, minmax_normalize_adj=use_adj_norm, threshold=adjnorm_threshold)
     print("-" * 5, "Building validation dataset...", "-" * 5)
-    validation_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, val_sedate[0], val_sedate[1], window_size, 'Validation', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate, minmax_normalize_adj=use_adj_norm)
+    validation_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, val_sedate[0], val_sedate[1], window_size, 'Validation', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate, minmax_normalize_adj=use_adj_norm, threshold=adjnorm_threshold)
     print("-" * 5, "Building test dataset...", "-" * 5)
-    test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, test_sedate[0], test_sedate[1], window_size, 'Test', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate, minmax_normalize_adj=use_adj_norm)
+    test_dataset = MyGeometricDataset(hist_price_stocks_path, graph_dest_path, market, filtered_company_list, test_sedate[0], test_sedate[1], window_size, 'Test', use_fast_approximation, normalize_method=norm_method, train_dates=train_sedate, minmax_normalize_adj=use_adj_norm, threshold=adjnorm_threshold)
 
     num_nodes =len(filtered_company_list)
     features = main_config_yaml["features"]
@@ -177,7 +179,7 @@ def main(args: argparse.Namespace) -> None:
             'kernel_size': model_param['kernel_size'],
             'blocks': model_param['blocks'],
             'layers': model_param['layers'],
-            'dropout': 0.3,
+            'dropout': 0.5,
             'gcn_bool': True,
             'addaptadj': True,
         }
@@ -256,27 +258,25 @@ def main(args: argparse.Namespace) -> None:
             feat_dim = 5,  # Assuming each node has 5 features
             n_nodes = num_nodes,  # Number of nodes in the graph
             n_classes = 1,
-            #t=None,
+            dim=256,
+            num_layers=10,
             l=window_size,
-            u=256,
-            s=10,
-            r=1e-3,
-            a=10,
-            gpu=0,
+            model='HGCN',
+            manifold='Hyperboloid',
+            act='relu',
+            dropout=0.5,
+            c=1,
+            #u=256,
+            #s=10,
+            #r=1e-3,
+            #a=10,
+            #gpu=0,
             #emb_file='NASDAQ_rank_lstm_seq-16_unit-64_2.csv.npy',
             #rel_name='sector_industry',
             #inner_prod=0,
-            lr=0.001,
-            dropout=0.2,
-            model='HGCN',
-            dim=6, #input dim for the decoder(?)
-            manifold='Hyperboloid',
-            c=1.0,
-            cuda=0,
+            #lr=0.001,
+            cuda=1 if torch.cuda.is_available() else -1,
             #epochs=5000,
-            weight_decay=0.0001,
-            optimizer='Adam',
-            momentum=0.999,
             patience=100,
             seed=None,
             log_freq=5,
@@ -291,21 +291,19 @@ def main(args: argparse.Namespace) -> None:
             min_epochs=100,
             task='nc',
             pretrained_embeddings=None,
-            num_layers=10,
             bias=1,
-            act='relu',
             n_heads=2,
             alpha=0.2,
             double_precision=0,
             use_att=0,
-            dataset='pubmed',
+            #dataset='pubmed',
             val_prop=0.05,
             test_prop=0.1,
             use_feats=1,
             normalize_feats=1,
             normalize_adj=1,
             split_seed=1234,
-            
+            pos_weight=0,
         )
    
 
@@ -363,6 +361,14 @@ if __name__ == '__main__':
         choices=['True', 'False'],
         help="Whether to apply adjacency normalization (e.g., 'True', 'False').",
         default='False'
+    )
+    
+    parser.add_argument(
+        '--adjnorm_threshold',
+        type=float,
+        nargs='?',
+        default=0.0,    
+        help="Threshold for adjacency normalization (default: 0.0)."
     )
 
     # Parse the command-line arguments

@@ -19,7 +19,8 @@ class PoincareBall(Manifold):
     def __init__(self, ):
         super(PoincareBall, self).__init__()
         self.name = 'PoincareBall'
-        self.min_norm = 1e-15
+        self.min_norm = 1e-10
+        self.max_norm = 1e6
         self.eps = {torch.float32: 4e-3, torch.float64: 1e-5}
 
     def sqdist(self, p1, p2, c):
@@ -62,7 +63,7 @@ class PoincareBall(Manifold):
         )
         gamma_1 = self.mobius_add(p, second_term, c)
         return gamma_1
-
+    
     def logmap(self, p1, p2, c):
         sub = self.mobius_add(-p1, p2, c)
         sub_norm = sub.norm(dim=-1, p=2, keepdim=True).clamp_min(self.min_norm)
@@ -79,7 +80,8 @@ class PoincareBall(Manifold):
     def logmap0(self, p, c):
         sqrt_c = c ** 0.5
         p_norm = p.norm(dim=-1, p=2, keepdim=True).clamp_min(self.min_norm)
-        scale = 1. / sqrt_c * artanh(sqrt_c * p_norm) / p_norm
+        arg = torch.clamp(sqrt_c * p_norm, max=1 - 1e-5)
+        scale = 1. / sqrt_c * artanh(arg) / p_norm
         return scale * p
 
     def mobius_add(self, x, y, c, dim=-1):
@@ -98,7 +100,7 @@ class PoincareBall(Manifold):
         res_c = tanh(mx_norm / x_norm * artanh(sqrt_c * x_norm)) * mx / (mx_norm * sqrt_c)
         cond = (mx == 0).prod(-1, keepdim=True, dtype=torch.uint8)
         res_0 = torch.zeros(1, dtype=res_c.dtype, device=res_c.device)
-        res = torch.where(cond, res_0, res_c)
+        res = torch.where(cond.bool(), res_0, res_c)
         return res
 
     def init_weights(self, w, c, irange=1e-5):

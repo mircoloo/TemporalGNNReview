@@ -57,9 +57,9 @@ model_params:
   
   DTML:
     hidden_size: 64
-    num_layers: 4
-    n_heads: 2
-    beta: 5
+    num_layers: 3
+    n_heads: 4
+    beta: .1
     drop_rate: .5
 # -----------------------------------------------------------------
 

@@ -42,7 +42,7 @@ class HyperStockGATRunner(BaseModelRunner):
                 optimizer.zero_grad()
                 emb = self.model.encode(x, adj)
                 outputs = self.model.decode(emb, adj)
-                loss = criterion(outputs, y)
+                loss = criterion(outputs, y.squeeze(0))
                 loss.backward()
                 optimizer.step()
                 train_loss += loss.item()
@@ -50,9 +50,9 @@ class HyperStockGATRunner(BaseModelRunner):
             avg_train_loss = train_loss / float(max(total_samples, 1))
             print(f"[Epoch {epoch}] Train Loss: {avg_train_loss:.4f}")
             
-            # Run validation every epoch
 
             if epoch % 1 == 0:
+                
                 self.model.eval()
                 val_metrics = {
                     'loss': 0.0, 'acc': 0.0, 'prec': 0.0, 
@@ -66,7 +66,7 @@ class HyperStockGATRunner(BaseModelRunner):
                         #x, y, adj = self._convert_data(batch, seq_length, num_features, batch.x.shape[0])
                         x, y, adj = x.to(self.device), y.to(self.device), adj.to(self.device)
                         #print(f"hyperstockgat input x.shape: {x.shape}, adj.shape: {adj.shape}, y.shape: {y.shape}")
-                        targets = y
+                        targets = y.squeeze(0)
                         optimizer.zero_grad()
                         emb = self.model.encode(x, adj)
                         outputs = self.model.decode(emb, adj)
@@ -136,6 +136,6 @@ class HyperStockGATRunner(BaseModelRunner):
                 outputs = self.model.decode(emb, adj)
                 preds = (torch.sigmoid(outputs) > 0.5).int().cpu()
                 all_preds.extend(preds.flatten().tolist())
-                all_labels.extend(y.cpu().flatten().tolist())
+                all_labels.extend(y.squeeze(0).cpu().flatten().tolist())
 
         return {'preds': np.array(all_preds), 'targets': np.array(all_labels)}

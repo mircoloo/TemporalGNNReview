@@ -60,15 +60,11 @@ model_params:
     P: 64
 
   DTML:
-    input_size: 5
-    hidden_size: 128
-    layers: 3
     hidden_size: 64
-    dropout: 0.3
-    num_layers: 1
+    num_layers: 3
     n_heads: 4
-    beta: 0.1
-    drop_rate: 0.3
+    beta: .1
+    drop_rate: .5
 
 # -----------------------------------------------------------------
 

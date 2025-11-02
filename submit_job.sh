@@ -30,7 +30,7 @@ cat <<EOF > "$slurm_file"
 #SBATCH --ntasks=1
 #SBATCH --mem=8G
 #SBATCH --time=14-00:00:00
-#SBATCH --gres=gpu
+##SBATCH --gres=gpu
 #SBATCH --account=thesis
 
 echo "Job started on \$(date)"

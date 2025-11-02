@@ -75,7 +75,7 @@ class DTMLRunner(BaseModelRunner):
 
             avg_train_loss = train_loss / n_train if n_train > 0 else 0.0
                 
-            if use_validation:
+            if use_validation and ( epoch % 5 == 0 or epoch == num_epochs - 1):
                 self.model.eval()
                 val_metrics = {
                     'loss': 0.0, 'acc': 0.0, 'prec': 0.0, 
@@ -121,7 +121,7 @@ class DTMLRunner(BaseModelRunner):
                     for k in val_metrics:
                         val_metrics[k] /= n_val
                     
-                    if epoch % 5 == 0 or epoch == num_epochs - 1:
+                    
                         headers = ["Metric", "Value"]
                         table_data = [
                             ["Train Loss", f"{avg_train_loss:.4f}"],

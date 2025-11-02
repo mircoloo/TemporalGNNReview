@@ -65,6 +65,13 @@ model_params:
   DARNN:
       M: 64
       P: 64
+  
+  DTML:
+    hidden_size: 64
+    num_layers: 3
+    n_heads: 4
+    beta: .1
+    drop_rate: .5
 # -----------------------------------------------------------------
 
 # Parameters for the training process
