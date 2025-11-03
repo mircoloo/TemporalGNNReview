@@ -246,7 +246,7 @@ def main(args: argparse.Namespace) -> None:
         runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, n_features, batch_size=batch_size)
         print("✅ Training finished.")
         print("\n" + "="*10 + " TESTING " + "="*10)
-        
+        runner.test(test_dataset)
 
     elif args.model == 'hyperstockgat':
         NCModel = load_model('hyperstockgat')

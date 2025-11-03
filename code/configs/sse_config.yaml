@@ -56,8 +56,8 @@ model_params:
     dropout: 0.3
   
   DARNN:
-    M: 64
-    P: 64
+    M: 256
+    P: 256
 
   DTML:
     hidden_size: 64

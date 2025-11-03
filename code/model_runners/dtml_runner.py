@@ -133,9 +133,9 @@ class DTMLRunner(BaseModelRunner):
                             ["MCC", f"{val_metrics['mcc']:.4f}"]
                         ]
                         
-                        print(f"\nEpoch {epoch+1}/{num_epochs} Results:")
-                        print(tabulate(table_data, headers=headers, tablefmt="pretty"))
-                        print("\n")
+                print(f"\nEpoch {epoch+1}/{num_epochs} Results:")
+                print(tabulate(table_data, headers=headers, tablefmt="pretty"))
+                print("\n")
 
     @evaluate_decorator
     def test(self, test_dataset, batch_size=1):

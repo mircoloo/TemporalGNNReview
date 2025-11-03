@@ -63,8 +63,8 @@ model_params:
 
 
   DARNN:
-      M: 64
-      P: 64
+    M: 256
+    P: 256
   
   DTML:
     hidden_size: 64
