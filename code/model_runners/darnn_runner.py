@@ -14,7 +14,18 @@ class DARNNRunner(BaseModelRunner):
         self.model_name = "DARNN"
 
 
-    def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, seq_length, batch_size=32):
+    def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, seq_length, batch_size=32,
+              early_stopping_patience=10,
+              early_stopping_metric='loss',
+              early_stopping_min_delta=1e-4):
+        """
+        Train the DARNN model with optional early stopping.
+        
+        Args:
+            early_stopping_patience: Number of epochs to wait for improvement before stopping
+            early_stopping_metric: Metric to monitor ('loss', 'acc', 'f1', 'mcc')
+            early_stopping_min_delta: Minimum change to qualify as an improvement
+        """
         train_set = DARNNDataset(train_dataset)
         val_set = DARNNDataset(val_dataset)
         
@@ -22,7 +33,11 @@ class DARNNRunner(BaseModelRunner):
         train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
-        best_val_loss = float('inf')
+        # Early stopping setup
+        best_val_metric = float('inf') if early_stopping_metric == 'loss' else float('-inf')
+        patience_counter = 0
+        best_model_state = None
+        best_epoch = 0
         for epoch in range(1,num_epochs+1):
             self.model.train()
             train_loss = 0.0
@@ -89,6 +104,28 @@ class DARNNRunner(BaseModelRunner):
                     for k in val_metrics:
                         val_metrics[k] /= n_val
                     
+                    # Early stopping logic
+                    current_metric = val_metrics[early_stopping_metric]
+                    
+                    # Check if improvement occurred
+                    if early_stopping_metric == 'loss':
+                        improved = (best_val_metric - current_metric) > early_stopping_min_delta
+                    else:
+                        improved = (current_metric - best_val_metric) > early_stopping_min_delta
+                    
+                    if improved:
+                        best_val_metric = current_metric
+                        patience_counter = 0
+                        best_epoch = epoch
+                        # Save best model state
+                        best_model_state = {
+                            k: v.cpu().clone() for k, v in self.model.state_dict().items()
+                        }
+                        improvement_marker = " ✓ NEW BEST"
+                    else:
+                        patience_counter += 1
+                        improvement_marker = ""
+                    
                     # Print results in a table format
                     if epoch % 1 == 0 or epoch == num_epochs:
                         headers = ["Metric", "Value"]
@@ -99,12 +136,28 @@ class DARNNRunner(BaseModelRunner):
                             ["Precision", f"{val_metrics['prec']:.4f}"],
                             ["Recall", f"{val_metrics['rec']:.4f}"],
                             ["F1 Score", f"{val_metrics['f1']:.4f}"],
-                            ["MCC", f"{val_metrics['mcc']:.4f}"]
+                            ["MCC", f"{val_metrics['mcc']:.4f}"],
+                            ["---", "---"],
+                            ["Best Epoch", f"{best_epoch}"],
+                            ["Patience", f"{patience_counter}/{early_stopping_patience}"]
                         ]
                         
-                        print(f"\nEpoch {epoch+1}/{num_epochs} Results:")
+                        print(f"\nEpoch {epoch}/{num_epochs} Results:{improvement_marker}")
                         print(tabulate(table_data, headers=headers, tablefmt="pretty"))
                         print("\n")
+                    
+                    # Check early stopping condition
+                    if patience_counter >= early_stopping_patience:
+                        print(f"\n{'='*60}")
+                        print(f"Early stopping triggered at epoch {epoch}")
+                        print(f"Best {early_stopping_metric}: {best_val_metric:.4f} at epoch {best_epoch}")
+                        print(f"{'='*60}\n")
+                        
+                        # Restore best model
+                        if best_model_state is not None:
+                            self.model.load_state_dict(best_model_state)
+                            print("✓ Best model weights restored")
+                        break
 
                 self.model.train()
 

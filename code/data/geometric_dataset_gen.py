@@ -98,7 +98,7 @@ class MyDataset(Dataset):
         if self.minmax_normalize_adj:
             if self.train_dir.exists() and (self.adj_minmax_path).exists():
                 print("Loading Min-Max normalizing adjacency matrix")
-                adj_data = torch.load(self.adj_minmax_path)
+                adj_data = torch.load(self.adj_minmax_path, weights_only=False)
                 self.adj_min = adj_data['adj_min']
                 self.adj_max = adj_data['adj_max']
 
@@ -552,8 +552,14 @@ class MyDataset(Dataset):
                 for col_idx in range(5):
                     features_df.iloc[:, col_idx] = features_df.iloc[:, col_idx].div(row_sums)
 
-            # Handle NaNs
+            # Handle NaNs with robust forward/backward fill strategy
+            # 1. First try forward fill (carry last valid observation forward)
+            features_df = features_df.ffill()
+            # 2. Then backward fill for any remaining NaNs at the start
+            features_df = features_df.bfill()
+            # 3. As last resort, fill any remaining NaNs with 0 (should be very rare)
             features_df = features_df.fillna(0)
+            
             df_features = features_df.transpose()
             X[:, idx, :] = torch.from_numpy(df_features.to_numpy())
 
