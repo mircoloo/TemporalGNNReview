@@ -316,7 +316,7 @@ def main(args: argparse.Namespace) -> None:
         optimizer = optim.Adam(model_HSG.parameters(), lr=0.001)
         criterion = nn.BCEWithLogitsLoss()
         num_epochs = train_param['epochs']
-
+        print(f"Learning rate: {train_param['learning_rate']}, weight decay: {train_param['weight_decay']}, Epochs: {num_epochs}")
         runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, window_size, 5)
         print("✅ Training finished.")
 
