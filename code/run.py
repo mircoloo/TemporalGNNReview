@@ -133,7 +133,8 @@ def main(args: argparse.Namespace) -> None:
         print(f"Model parameters: {sum([p.numel() for p in model_DGDNN.parameters()]):,}")
         
         runner = DGDNNRunner(model_DGDNN, device, market_name)
-
+        print(f"Creating DGDNN model with parameters: {model_param}")
+        print(f"Training parameters: Learning rate: {train_param['learning_rate']}, weight decay: {train_param['weight_decay']}")
         # build the optimizer & criterion
         optimizer = optim.Adam(model_DGDNN.parameters(), lr=float(train_param['learning_rate']), weight_decay=float(train_param['weight_decay']))
         criterion = nn.BCEWithLogitsLoss()

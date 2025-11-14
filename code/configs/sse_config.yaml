@@ -56,21 +56,21 @@ model_params:
     dropout: 0.5
   
   DARNN:
-    M: 128
-    P: 128
+    M: 64
+    P: 64
 
   DTML:
     hidden_size: 64
     num_layers: 3
     n_heads: 4
     beta: .1
-    drop_rate: .15
+    drop_rate: 0.15
 
 # -----------------------------------------------------------------
 
 # Parameters for the training process
 training_params:
-  learning_rate: 1e-5      # From paper: 2e-4
-  weight_decay: 1.5e-3     # From paper: 1.5e-5
-  epochs: 300               # From paper 300
+  learning_rate: 1e-4      # From paper: 2e-4
+  weight_decay:  1e-5 #1.5e-3     # From paper: 1.5e-5
+  epochs: 5               # From paper 300
   batch_size: 1    

@@ -33,6 +33,7 @@ Thumbs.db
 /logs/
 /runs/
 /analysys_results/
+/training_plots/*
 *hyper-stockgat-www*
 *Temporal_Relational_Stock_Ranking*
 *submit_more_jobs.sh*

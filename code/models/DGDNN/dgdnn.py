@@ -90,9 +90,9 @@ class DGDNN(nn.Module):
 
         # Final classifier layer
         # Maps the combined, learned representations to the final class probabilities for stock movement prediction. [cite: 43]
-        self.linear = nn.Linear(embedding_output_size, embedding_output_size)
-        self.linear2 = nn.Linear(embedding_output_size, embedding_output_size)
-        self.linear3 = nn.Linear(embedding_output_size, classes)
+        self.linear = nn.Linear(embedding_output_size, classes)
+        #self.linear2 = nn.Linear(embedding_output_size, embedding_output_size)
+        #self.linear3 = nn.Linear(embedding_output_size, classes)
 
         # Initialize the learned transition parameters (T and theta)
         self._init_transition_params()
@@ -138,10 +138,10 @@ class DGDNN(nn.Module):
                 h_prime = h_prime + self.cat_attn_layers[l](h, h_prime)
     
         # Final prediction
-        out = torch.relu(self.linear(h_prime))
-        out = torch.relu(self.linear2(out))
-        out = self.linear3(out)  
-        return out
+        #out = torch.relu(self.linear(h_prime))
+        #out = torch.relu(self.linear2(out))
+        #out = self.linear3(out)  
+        return self.linear(h_prime)
 
 
 ## For those who use fast implementation version.
