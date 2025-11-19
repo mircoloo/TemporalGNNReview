@@ -31,9 +31,9 @@ class DTMLRunner(BaseModelRunner):
               n_features,
               batch_size=1, 
               use_validation=True,
-              early_stopping_patience=50,
+              early_stopping_patience=20,
               early_stopping_metric='loss',
-              early_stopping_min_delta=1e-4,
+              early_stopping_min_delta=1e-6,
               plot_dir='training_plots'):
         """
         Train the DTML model with optional early stopping.

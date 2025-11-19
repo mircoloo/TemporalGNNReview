@@ -98,7 +98,7 @@ def evaluate_decorator(func):
                     
                     # Print classification report
                     print("\nClassification Report:")
-                    print(classification_report(targets, preds))
+                    print(classification_report(targets, preds, zero_division=0))
                     
                     # Update results with metrics
                     results.update({

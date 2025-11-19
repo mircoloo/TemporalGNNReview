@@ -14,7 +14,7 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.utils import to_dense_adj
 from tqdm import tqdm
 
-torch.manual_seed(42)  # For reproducibility
+#torch.manual_seed(42)  # For reproducibility
 
 # --- Local Imports ---
 from utils.dataset_utils import filter_stocks_from_timeperiod, retrieve_company_list
@@ -259,7 +259,7 @@ def main(args: argparse.Namespace) -> None:
             feat_dim = 5,  # Assuming each node has 5 features
             n_nodes = num_nodes,  # Number of nodes in the graph
             n_classes = 1,
-            dim=32,
+            dim=128,
             num_layers=4,
             l=window_size,
             model='HGCN',

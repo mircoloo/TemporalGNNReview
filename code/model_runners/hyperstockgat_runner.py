@@ -25,7 +25,7 @@ class HyperStockGATRunner(BaseModelRunner):
               epochs: int, 
               seq_length: int, 
               num_features: int,
-              early_stopping_patience=50,
+              early_stopping_patience=20,
               early_stopping_metric='loss',
               early_stopping_min_delta=1e-4,
               plot_dir='training_plots'):

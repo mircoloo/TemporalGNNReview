@@ -28,7 +28,7 @@ class GraphWaveNetRunner(BaseModelRunner):
               num_features, 
               batch_size=32,
               threshold=0.5,
-              early_stopping_patience=50,
+              early_stopping_patience=10,
               early_stopping_metric='loss',
               early_stopping_min_delta=1e-4,
               plot_dir='training_plots'):

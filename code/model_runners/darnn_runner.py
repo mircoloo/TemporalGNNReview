@@ -18,9 +18,9 @@ class DARNNRunner(BaseModelRunner):
 
 
     def train(self, train_dataset, val_dataset, optimizer, criterion, num_epochs, seq_length, batch_size=32,
-              early_stopping_patience=50,
+              early_stopping_patience=20,
               early_stopping_metric='loss',
-              early_stopping_min_delta=1e-4,
+              early_stopping_min_delta=1e-5,
               plot_dir='training_plots'):
         """
         Train the DARNN model with optional early stopping.

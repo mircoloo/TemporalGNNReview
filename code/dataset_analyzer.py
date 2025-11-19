@@ -405,7 +405,8 @@ class MarketAnalyzer():
             return 0.0
 
         # Convert to an undirected view for distance computation; ignore weights for geodesic length.
-        G = G_directed.to_undirected()
+        #G = G_directed.to_undirected()
+        G = G_directed
         length = dict(nx.all_pairs_shortest_path_length(G))
 
         nodes = list(G.nodes())
