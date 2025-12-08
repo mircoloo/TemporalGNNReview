@@ -22,6 +22,11 @@ class DTMLRunner(BaseModelRunner):
         self.market = market.upper()
         self.norm_values = {'minmax': None, 'zscore': None} #minmax [min, max], zscore [mean, std]
         
+        if self.dates:
+            self.train_indexes = self.load_index(self.dates[0], is_train=True)
+            self.val_indexes = self.load_index(self.dates[1])
+            self.test_indexes = self.load_index(self.dates[2])
+        
 
     def train(self, train_dataset, 
               val_dataset, 
@@ -47,10 +52,6 @@ class DTMLRunner(BaseModelRunner):
         self.criterion = criterion
         self.num_epochs = num_epochs
         self.batch_size = batch_size
-        self.train_indexes = self.load_index(self.dates[0], is_train=True)
-
-        self.val_indexes = self.load_index(self.dates[1])
-        self.test_indexes = self.load_index(self.dates[2])
 
         # Early stopping setup
         best_val_metric = float('inf') if early_stopping_metric == 'loss' else float('-inf')
@@ -95,6 +96,7 @@ class DTMLRunner(BaseModelRunner):
             train_all_logits = []
             train_batch_losses = []
             train_batch_improvements = []
+            epoch_grad_norms = []
             
             print(f"\n{'#'*80}")
             print(f"# EPOCH {epoch+1}/{num_epochs}")
@@ -118,7 +120,13 @@ class DTMLRunner(BaseModelRunner):
                 x = x.squeeze(0)  # Remove batch dimension if batch_size=1
                 index_x = index_x.squeeze(0)  # Remove batch dimension if batch_size=1
 
-                outputs = self.model(x, index_x)['output'].permute(1,0)
+                # Capture attention periodically
+                if epoch % 5 == 0 and batch_idx == 0:
+                    out_dict = self.model(x, index_x, rt_attn=True)
+                    outputs = out_dict['output'].permute(1,0)
+                    self._save_attention_visualizations(epoch, out_dict)
+                else:
+                    outputs = self.model(x, index_x)['output'].permute(1,0)
                 
                 # Calculate batch accuracy
                 batch_acc += ((torch.round(torch.sigmoid(outputs))).detach().int().cpu() == y.detach().int().cpu()).float().mean().item()
@@ -126,15 +134,17 @@ class DTMLRunner(BaseModelRunner):
                 loss = self.criterion(outputs.float(), y.float())
                 loss.backward()
                 
-                # Check gradient norms before optimizer step
-                total_grad_norm = 0.0
-                num_params_with_grad = 0
+                # Debug gradients
+                total_norm = 0.0
                 for p in self.model.parameters():
                     if p.grad is not None:
                         param_norm = p.grad.data.norm(2)
-                        total_grad_norm += param_norm.item() ** 2
-                        num_params_with_grad += 1
-                total_grad_norm = total_grad_norm ** 0.5
+                        total_norm += param_norm.item() ** 2
+                total_norm = total_norm ** 0.5
+                epoch_grad_norms.append(total_norm)
+                
+                if batch_idx % 10 == 0:
+                    print(f"Batch {batch_idx} Grad Norm: {total_norm:.4f}")
                 
                 optimizer.step()
                 
@@ -148,62 +158,26 @@ class DTMLRunner(BaseModelRunner):
                     improvement = prev_batch_loss - current_batch_loss
                     train_batch_improvements.append(improvement)
                     
-                    # Report non-improving batches
-                    if improvement <= 0:
-                        if batch_idx % 10 == 0 or epoch < 3:  # More verbose in early epochs
-                            print(f"  ⚠️ Batch {batch_idx}: Loss NOT improving "
-                                  f"(prev: {prev_batch_loss:.6f}, curr: {current_batch_loss:.6f}, "
-                                  f"diff: {improvement:.6f}, grad_norm: {total_grad_norm:.6f})")
                 n_train += 1
                 batch_idx += 1
-                
-                # Verbose logging for first few batches of early epochs
-                if epoch < 2 and batch_idx <= 5:
-                    print(f"  📊 Batch {batch_idx}: loss={current_batch_loss:.6f}, "
-                          f"grad_norm={total_grad_norm:.6f}, "
-                          f"output_range=[{outputs.min().item():.4f}, {outputs.max().item():.4f}]")
-                
-                # Debug first batch of first epoch
-                if epoch == 0 and n_train == 1:
-                    print(f"\n🔬 FIRST BATCH DEBUG:")
-                    print(f"  Input X shape: {x.shape}")
-                    print(f"  Index X shape: {index_x.shape}")
-                    print(f"  Targets shape: {y.shape}")
-                    print(f"  Outputs shape: {outputs.shape}")
-                    print(f"  Sample outputs[:5]: {outputs.flatten()[:5].detach().cpu().numpy()}")
-                    print(f"  Sample targets[:5]: {y.flatten()[:5].detach().cpu().numpy()}")
-                    
-                    # Check if all outputs are the same
-                    outputs_flat = outputs.flatten().detach().cpu().numpy()
-                    print(f"  Output variance: {outputs_flat.var():.8f}")
-                    if outputs_flat.var() < 1e-6:
-                        print(f"  ⚠️ CRITICAL: All outputs are nearly identical!")
-                    
-                    # Check gradient flow
-                    print(f"  Gradient norm: {total_grad_norm:.6f}")
-                    print(f"  Params with gradients: {num_params_with_grad}")
                 
                 # Collect predictions for manual metrics
                 preds = (torch.round(torch.sigmoid(outputs))).int().cpu()
                 train_all_preds.extend(preds.flatten().tolist())
                 train_all_targets.extend(y.int().cpu().flatten().tolist())
                 train_all_logits.extend(outputs.detach().cpu().flatten().tolist())
+                
+                # Save attention for the first batch of every 5th epoch
+                if epoch % 5 == 0 and batch_idx == 1:
+                    # We need to run forward pass with rt_attn=True to get attention weights
+                    # But the training loop already ran forward. 
+                    # The model definition of DTML.forward has rt_attn=False by default.
+                    # We need to modify the training call or do a separate pass.
+                    # Let's do a separate pass for visualization to avoid changing the training loop logic too much
+                    with torch.no_grad():
+                        viz_outputs = self.model(x, index_x, rt_attn=True)
+                        self._save_attention_visualizations(epoch, viz_outputs)
             
-            print(f"MANUAL BATCH ACC = {(batch_acc/n_train):.4f}")
-            
-            # Batch improvement summary
-            if len(train_batch_improvements) > 0:
-                improving_batches = sum(1 for imp in train_batch_improvements if imp > 0)
-                worsening_batches = sum(1 for imp in train_batch_improvements if imp < 0)
-                stable_batches = len(train_batch_improvements) - improving_batches - worsening_batches
-                print(f"\n  📈 Batch Improvement Summary:")
-                print(f"    Improving batches: {improving_batches}/{len(train_batch_improvements)} "
-                      f"({100*improving_batches/len(train_batch_improvements):.1f}%)")
-                print(f"    Worsening batches: {worsening_batches}/{len(train_batch_improvements)} "
-                      f"({100*worsening_batches/len(train_batch_improvements):.1f}%)")
-                print(f"    Stable batches: {stable_batches}/{len(train_batch_improvements)} "
-                      f"({100*stable_batches/len(train_batch_improvements):.1f}%)")
-
             avg_train_loss = train_loss / n_train if n_train > 0 else 0.0
             history['train_loss'].append(avg_train_loss)
             
@@ -211,21 +185,25 @@ class DTMLRunner(BaseModelRunner):
             epoch_improvement = prev_epoch_loss - avg_train_loss
             loss_improvement_history.append(epoch_improvement)
             
-            if epoch_improvement <= 0:
-                print(f"\n  ⚠️⚠️⚠️ EPOCH LOSS NOT IMPROVING ⚠️⚠️⚠️")
-                print(f"  Previous epoch loss: {prev_epoch_loss:.6f}")
-                print(f"  Current epoch loss:  {avg_train_loss:.6f}")
-                print(f"  Difference:          {epoch_improvement:.6f}")
-            else:
-                print(f"\n  ✅ Epoch improvement: {epoch_improvement:.6f} "
-                      f"(prev: {prev_epoch_loss:.6f} → curr: {avg_train_loss:.6f})")
-            
             prev_epoch_loss = avg_train_loss
             
             # Calculate training metrics manually
             train_all_preds = np.array(train_all_preds)
             train_all_targets = np.array(train_all_targets)
             train_all_logits = np.array(train_all_logits)
+            
+            # Gradient Analysis Summary
+            if len(epoch_grad_norms) > 0:
+                grad_mean = np.mean(epoch_grad_norms)
+                grad_std = np.std(epoch_grad_norms)
+                grad_max = np.max(epoch_grad_norms)
+                grad_min = np.min(epoch_grad_norms)
+                print(f"  Gradient Norms: Mean={grad_mean:.4f}, Std={grad_std:.4f}, Min={grad_min:.4f}, Max={grad_max:.4f}")
+                
+                if grad_max > 100:
+                    print("  ⚠️ WARNING: Exploding gradients detected!")
+                if grad_mean < 1e-4:
+                    print("  ⚠️ WARNING: Vanishing gradients detected!")
             
             train_metrics = {
                 'acc': accuracy_score(train_all_targets, train_all_preds),
@@ -244,79 +222,6 @@ class DTMLRunner(BaseModelRunner):
             
             # Get num_nodes from data
             num_nodes = y.shape[-1] if len(y.shape) > 1 else len(y.flatten())
-            
-            # Print training debug info
-            print(f"\n{'='*80}")
-            print(f"TRAINING DEBUG - Epoch {epoch+1}/{num_epochs}")
-            print(f"{'='*80}")
-            print(f"📉 LOSS STATISTICS:")
-            print(f"  Train Loss (avg): {avg_train_loss:.6f}")
-            print(f"  Train Loss (min batch): {min(train_batch_losses):.6f}")
-            print(f"  Train Loss (max batch): {max(train_batch_losses):.6f}")
-            print(f"  Train Loss (std): {np.std(train_batch_losses):.6f}")
-            
-            # Loss distribution analysis
-            loss_quartiles = np.percentile(train_batch_losses, [25, 50, 75])
-            print(f"  Loss quartiles [Q1, Q2, Q3]: [{loss_quartiles[0]:.6f}, {loss_quartiles[1]:.6f}, {loss_quartiles[2]:.6f}]")
-            
-            # Identify problematic batches
-            high_loss_threshold = avg_train_loss + 2 * np.std(train_batch_losses)
-            high_loss_batches = [i for i, loss in enumerate(train_batch_losses) if loss > high_loss_threshold]
-            if len(high_loss_batches) > 0:
-                print(f"  ⚠️ High loss batches (>{high_loss_threshold:.6f}): {len(high_loss_batches)} batches")
-                print(f"    Batch indices: {high_loss_batches[:10]}{'...' if len(high_loss_batches) > 10 else ''}")
-            
-            print(f"\n🔍 LOGITS ANALYSIS:")
-            print(f"  Logits - Min: {train_all_logits.min():.4f}, Max: {train_all_logits.max():.4f}, "
-                  f"Mean: {train_all_logits.mean():.4f}, Std: {train_all_logits.std():.4f}")
-            
-            # Check if logits are all the same (CRITICAL ISSUE)
-            unique_logits = np.unique(np.round(train_all_logits, 4))
-            print(f"  Unique logit values (rounded to 4 decimals): {len(unique_logits)}")
-            if len(unique_logits) < 10:
-                print(f"  ⚠️ WARNING: Very few unique logit values! {unique_logits[:10]}")
-            
-            # Check variance across different nodes
-            train_all_logits_reshaped = np.array(train_all_logits).reshape(-1, num_nodes)
-            per_node_variance = train_all_logits_reshaped.var(axis=0)
-            per_node_mean = train_all_logits_reshaped.mean(axis=0)
-            print(f"  Per-node variance - Mean: {per_node_variance.mean():.6f}, "
-                  f"Min: {per_node_variance.min():.6f}, Max: {per_node_variance.max():.6f}")
-            print(f"  Per-node mean - Mean: {per_node_mean.mean():.6f}, "
-                  f"Min: {per_node_mean.min():.6f}, Max: {per_node_mean.max():.6f}")
-            print(f"  Nodes with zero variance: {np.sum(per_node_variance < 1e-6)}/{num_nodes}")
-            
-            # Check if nodes have different means
-            nodes_with_same_mean = np.sum(np.abs(per_node_mean - per_node_mean.mean()) < 1e-4)
-            if nodes_with_same_mean > num_nodes * 0.9:
-                print(f"  ⚠️ CRITICAL: {nodes_with_same_mean}/{num_nodes} nodes have nearly identical means!")
-            
-            print(f"\n📊 PREDICTIONS ANALYSIS:")
-            print(f"  Sample logits (first 20): {train_all_logits[:20]}")
-            print(f"  Sample targets (first 20): {train_all_targets[:20]}")
-            print(f"  Sample preds (first 20): {train_all_preds[:20]}")
-            
-            # Check if all predictions are the same
-            unique_preds = np.unique(train_all_preds)
-            print(f"  Unique predictions: {unique_preds}")
-            if len(unique_preds) == 1:
-                print(f"  ⚠️ CRITICAL: Model always predicts class {unique_preds[0]}!")
-            
-            print(f"\n📈 METRICS:")
-            print(f"  Manual Train Accuracy: {train_metrics['acc']:.4f}")
-            print(f"  Class distribution - Targets: {np.bincount(train_all_targets.astype(int))}")
-            print(f"  Class distribution - Preds: {np.bincount(train_all_preds.astype(int))}")
-            
-            # Check gradient flow
-            print(f"\n🔧 MODEL PARAMETERS:")
-            total_params = sum(p.numel() for p in self.model.parameters())
-            trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-            print(f"  Total parameters: {total_params}, Trainable: {trainable_params}")
-            
-            # Check if parameters are updating
-            has_grad = sum(1 for p in self.model.parameters() if p.grad is not None)
-            total_model_params = sum(1 for _ in self.model.parameters())
-            print(f"  Parameters with gradients: {has_grad}/{total_model_params}")
                 
             if use_validation and ( epoch % 5 == 0 or epoch == num_epochs - 1):
                 self.model.eval()
@@ -389,14 +294,6 @@ class DTMLRunner(BaseModelRunner):
                         'f1': f1_score(val_all_targets, val_all_preds, zero_division=0),
                         'mcc': matthews_corrcoef(val_all_targets, val_all_preds)
                     }
-                    
-                    # Print validation debug info
-                    print(f"\n{'='*80}")
-                    print(f"VALIDATION DEBUG - Epoch {epoch+1}/{num_epochs}")
-                    print(f"{'='*80}")
-                    print(f"Val Loss (avg): {val_metrics['loss']:.6f}")
-                    print(f"Val Loss (min batch): {min(val_batch_losses):.6f}")
-                    print(f"Val Loss (max batch): {max(val_batch_losses):.6f}")
                     
                     print(f"\n🔍 VALIDATION LOGITS ANALYSIS:")
                     print(f"  Logits - Min: {val_all_logits.min():.4f}, Max: {val_all_logits.max():.4f}, "
@@ -733,5 +630,40 @@ class DTMLRunner(BaseModelRunner):
             self.norm_values['minmax'] = [df.min().to_numpy(), df.max().to_numpy()]
         elif self.feature_normalization == 'zscore':
             self.norm_values['zscore'] = [df.mean().to_numpy(), df.std().to_numpy()]
+    
+    def _save_attention_visualizations(self, epoch, outputs):
+        """Save attention visualizations for DTML"""
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        from pathlib import Path
+        
+        save_dir = Path('training_plots') / 'DTML' / 'attention' / f'epoch_{epoch}'
+        save_dir.mkdir(parents=True, exist_ok=True)
+        
+        # DTML returns attention weights in the output dictionary
+        # 'tx_attn_stocks': [D, W] (Stocks x Window)
+        # 'tx_attn_index': [1, W]
+        # 'dx_attn_stocks': [D, D] (Stocks x Stocks)
+        
+        if 'tx_attn_stocks' in outputs and outputs['tx_attn_stocks'] is not None:
+            attn = outputs['tx_attn_stocks'].detach().cpu().numpy()
+            plt.figure(figsize=(12, 8))
+            sns.heatmap(attn, cmap='viridis', annot=False)
+            plt.title(f'Time-Axis Attention (Stocks) - Epoch {epoch}')
+            plt.xlabel('Time Step')
+            plt.ylabel('Stock Index')
+            plt.tight_layout()
+            plt.savefig(save_dir / 'time_attention_stocks.png')
+            plt.close()
             
-            
+        if 'dx_attn_stocks' in outputs and outputs['dx_attn_stocks'] is not None:
+            attn = outputs['dx_attn_stocks'].detach().cpu().numpy()
+            plt.figure(figsize=(10, 10))
+            sns.heatmap(attn, cmap='viridis', annot=False)
+            plt.title(f'Data-Axis Attention (Stock-to-Stock) - Epoch {epoch}')
+            plt.xlabel('Stock Index')
+            plt.ylabel('Stock Index')
+            plt.tight_layout()
+            plt.savefig(save_dir / 'data_attention_stocks.png')
+            plt.close()
+

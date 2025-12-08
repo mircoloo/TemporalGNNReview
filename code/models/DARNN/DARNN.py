@@ -44,6 +44,7 @@ class InputAttentionEncoder(nn.Module):
         s_tm1 = torch.zeros((inputs.size(0), self.M)).to(self.device)
         
         # Calculate Input Attention
+        self.input_attention_weights = []
         for t in range(self.T):
             #concatenate hidden states
             h_c_concat = torch.cat((h_tm1, s_tm1), dim=1).to(self.device) # [embedding size, 2M]
@@ -57,6 +58,8 @@ class InputAttentionEncoder(nn.Module):
             if e_k_t.dim() == 1:
                 e_k_t = e_k_t.unsqueeze(0)
             alpha_k_t = F.softmax(e_k_t, dim=1)
+            self.input_attention_weights.append(alpha_k_t.detach().cpu())
+            
             #weight inputs (equation 10)
             weighted_inputs = alpha_k_t * inputs[:, t, :] 
     
@@ -105,6 +108,7 @@ class TemporalAttentionDecoder(nn.Module):
         y = y.to(self.device)
         d_tm1 = torch.zeros((encoded_inputs.size(0), self.P)).to(self.device) #embedding size x decoder units
         s_prime_tm1 = torch.zeros((encoded_inputs.size(0), self.P)).to(self.device)
+        self.temporal_attention_weights = []
         for t in range(self.T): # for each timestamp
             #concatenate hidden states
             d_s_prime_concat = torch.cat((d_tm1, s_prime_tm1), dim=1).to(self.device) # [embedding size, 2P]
@@ -116,6 +120,7 @@ class TemporalAttentionDecoder(nn.Module):
             
             #normalized attention weights (equation 13)
             beta_i_t = F.softmax(l_i_t, dim=1).to(self.device)  # [embedding size, M]
+            self.temporal_attention_weights.append(beta_i_t.detach().cpu())
             
             #create context vector (equation_14)
             c_t = torch.sum(beta_i_t * encoded_inputs, dim=1).to(self.device)  # [embedding size, M]

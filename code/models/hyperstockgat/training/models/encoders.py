@@ -173,6 +173,8 @@ class HGCN(Encoder):
         x = x.permute(0,1,3,2)
         batch_size, num_of_vertices, num_of_features, num_of_timesteps = x.shape
         temporal_At = self.tat(x)
+        self.temporal_attention_1 = temporal_At.detach().cpu() # Store for visualization
+        
         x_TAt = torch.matmul(x.reshape(batch_size, -1, num_of_timesteps), temporal_At).reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
         x_TAt = self.time_conv(x_TAt.permute(0, 2, 1, 3)).reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
         outputs = []
@@ -188,6 +190,8 @@ class HGCN(Encoder):
         h = spatial_At.permute(0, 2, 3, 1)
         batch_size, num_of_vertices, num_of_features, num_of_timesteps = h.shape
         temporal_At = self.tat2(h)
+        self.temporal_attention_2 = temporal_At.detach().cpu() # Store for visualization
+        
         x_TAt = torch.matmul(h.reshape(batch_size, -1, num_of_timesteps), temporal_At).reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
         x_TAt = self.time_conv2(x_TAt.permute(0, 2, 1, 3))
         x_TAt = x_TAt.reshape(batch_size, num_of_timesteps,num_of_vertices, num_of_features)

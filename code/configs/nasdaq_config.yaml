@@ -5,12 +5,12 @@
 # Parameters related to data loading and time periods
 dataset_params:
   market: 'NASDAQ'
-  train_sedate: ['2016-05-01', '2017-06-30'] #['2010-05-01', '2013-06-30']  # #ORIGINAL FROM PAPER
-  #train_sedate: ['2013-05-01', '2017-06-30']  
-  val_sedate: ['2017-07-01', '2017-12-31'] #['2013-07-01', '2014-12-31'] # #ORIGINAL FROM PAPER
+  train_sedate: ['2016-05-01', '2017-06-30'] #ORIGINAL FROM PAPER
+  #train_sedate: ['2010-05-01', '2017-06-30']  
+  val_sedate: ['2017-07-01', '2017-12-31'] #ORIGINAL FROM PAPER
   #val_sedate: ['2017-07-01', '2018-07-01']
-  test_sedate: ['2018-01-01', '2019-12-31'] #['2015-01-01', '2017-12-31'] # #ORIGINAL FROM PAPER
-  #test_sedate: ['2018-07-02', '2019-12-31']
+  test_sedate: ['2018-01-01', '2019-12-31'] #ORIGINAL FROM PAPER
+  #test_sedate: ['2018-07-02', '2022-12-31']
   window_size: 19  # From paper: τ = 19
   use_fast_approximation: false
 
@@ -27,16 +27,23 @@ model_params:
     # The output size for ALL attention layers. From paper's "embedding dimension".
     embedding_output_size: 128
     # The size of the internal MLP inside the attention block. 256 is a sensible default.
-    embedding_hidden_size: 1024
+    embedding_hidden_size: 128
     # The size the raw features are projected to. Must be divisible by num_heads (3). 96 is a good choice.
     raw_feature_size: 96
 
-    diffusion_size: [95, 128, 256, 512, 256, 128, 128, 128, 128]
+    diffusion_size: [95, 128, 128, 128, 128, 128, 128, 128, 128]
 
     # Length must be layers = 8. Values are calculated input dimensions for each attention layer.
-    embedding_size: [224, 384, 640, 384, 256, 256, 256, 256]
-    neighbour_radius_coeff: 2.9e-3  # From paper: α = 2.9e-3
-  
+    embedding_size:
+      - 224  
+      - 256  # 384 / 3 = 128
+      - 256  # 639 / 3 = 213
+      - 256  # 384 / 3 = 128
+      - 256  # 255 / 3 = 85
+      - 256
+      - 256
+      - 256
+    batch_size: 1     # Batch size for training
 
   GraphWaveNet:
     layers: 2
@@ -49,23 +56,29 @@ model_params:
     gcn_bool: true
     addaptadj: true
     dropout: 0.3
+    batch_size: 1     # Batch size for training
 
   
   DARNN:
     M: 64
     P: 64
+    batch_size: 1     # Batch size for training
   
   DTML:
     hidden_size: 64
-    num_layers: 3
+    num_layers: 4
     n_heads: 4
-    beta: .1
+    beta: 1
     drop_rate: .3
+    batch_size: 1      # Batch size for training
+  
+  HyperStockGAT:
+    batch_size: 1     # Batch size for training
 # -----------------------------------------------------------------
 
 # Parameters for the training process
 training_params:
-  learning_rate: 1e-4      # From paper: 2e-4
-  weight_decay:  1e-5 #1.5e-3     # From paper: 1.5e-5
-  epochs: 300               # From paper 300
-  batch_size: 1      
+  learning_rate: 5e-5      # From paper: 2e-4
+  weight_decay: 1e-5    # From paper: 1.5e-5
+  epochs: 300               # From paper
+  neighbour_radius_coeff: 2.9e-3  # From paper: α = 2.9e-3

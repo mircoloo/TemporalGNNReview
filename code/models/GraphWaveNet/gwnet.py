@@ -160,6 +160,7 @@ class gwnet(nn.Module):
         if self.gcn_bool and self.addaptadj:
             # Generate adaptive adjacency matrix (A_adp) from learned node embeddings
             adp = F.softmax(F.relu(torch.mm(self.nodevec1, self.nodevec2)), dim=1)
+            self.adp = adp # Store for visualization
             if self.supports is None:
                  new_supports = [adp] # If no fixed supports, adaptive is the only one
             else:

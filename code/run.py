@@ -75,7 +75,7 @@ def main(args: argparse.Namespace) -> None:
     test_sedate = dataset_param['test_sedate']
     window_size = dataset_param['window_size']
     use_fast_approximation = dataset_param['use_fast_approximation']
-    batch_size = train_param.get('batch_size', 1)  # Default to 1 if not specified
+    # Note: batch_size is now model-specific, retrieved later based on selected model
     
     # ------------------ 3. LOAD AND PREPARE DATASET ------------------
     company_list = retrieve_company_list(tickers_csv_path)
@@ -116,6 +116,7 @@ def main(args: argparse.Namespace) -> None:
         DGDNN = load_model('DGDNN')
         model_param = model_param['DGDNN']
         alpha = model_param.get('neighbour_radius_coeff', 0.0)
+        batch_size = model_param.get('batch_size', 32)  # Get batch_size from DGDNN config
         model_DGDNN = DGDNN(
             diffusion_size=model_param['diffusion_size'],
             embedding_size=model_param['embedding_size'],
@@ -155,16 +156,20 @@ def main(args: argparse.Namespace) -> None:
             num_nodes,
             batch_size=batch_size)
             
-        runner.test(test_dataset, 
-                    window_size, 
-                    num_nodes)
-
+        test_results = runner.test(
+            test_dataset, 
+            window_size, 
+            num_nodes,
+            save_attention=True,        # Enable auto-save
+            max_saves=30                # Save first 30 forward passes
+        )
 
         
     elif args.model == 'graphwavenet':
         print("GraphWaveNet model selected. Running training and evaluation pipeline.")
         GWN = load_model('GraphWaveNet')
         model_param = model_param['GraphWaveNet']
+        batch_size = model_param.get('batch_size', 32)  # Get batch_size from GraphWaveNet config
         
         print(model_param)
         
@@ -205,6 +210,7 @@ def main(args: argparse.Namespace) -> None:
     elif args.model == 'darnn':
         MultiStockDARNN = load_model('DARNN')
         model_param = model_param['DARNN']
+        batch_size = model_param.get('batch_size', 32)  # Get batch_size from DARNN config
         print(f"Creating DARNN model with parameters: {model_param}")
         model_DARNN = MultiStockDARNN(
             N = num_nodes,
@@ -227,6 +233,7 @@ def main(args: argparse.Namespace) -> None:
     elif args.model == 'dtml':
         model_DTML = load_model('DTML')
         model_param = model_param['DTML']
+        batch_size = model_param.get('batch_size', 1)  # Get batch_size from DTML config
         print(f"Creating DTML model with parameters: {model_param}")
         model_DTML = model_DTML(
             input_size=n_features,
@@ -251,6 +258,8 @@ def main(args: argparse.Namespace) -> None:
 
     elif args.model == 'hyperstockgat':
         NCModel = load_model('hyperstockgat')
+        model_param_hsg = model_param.get('HyperStockGAT', {})
+        batch_size = model_param_hsg.get('batch_size', 32)  # Get batch_size from HyperStockGAT config
         
         args = argparse.Namespace(
             #p='../data/2013-01-01',
@@ -259,13 +268,13 @@ def main(args: argparse.Namespace) -> None:
             feat_dim = 5,  # Assuming each node has 5 features
             n_nodes = num_nodes,  # Number of nodes in the graph
             n_classes = 1,
-            dim=128,
-            num_layers=4,
+            dim=45,
+            num_layers=3,
             l=window_size,
             model='HGCN',
-            manifold='Hyperboloid',
+            manifold='PoincareBall',
             act='relu',
-            dropout=0.5,
+            dropout=0.1,
             c=1,
             #u=256,
             #s=10,
@@ -296,7 +305,7 @@ def main(args: argparse.Namespace) -> None:
             n_heads=2,
             alpha=0.2,
             double_precision=0,
-            use_att=0,
+            use_att=1,
             #dataset='pubmed',
             val_prop=0.05,
             test_prop=0.1,
@@ -318,7 +327,8 @@ def main(args: argparse.Namespace) -> None:
         criterion = nn.BCEWithLogitsLoss()
         num_epochs = train_param['epochs']
         print(f"Learning rate: {train_param['learning_rate']}, weight decay: {train_param['weight_decay']}, Epochs: {num_epochs}")
-        runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, window_size, 5)
+        print(f"Batch size: {batch_size}")
+        runner.train(train_dataset, validation_dataset, optimizer, criterion, num_epochs, window_size, 5, batch_size=batch_size)
         print("✅ Training finished.")
 
         print("\n" + "="*10 + " TESTING " + "="*10)

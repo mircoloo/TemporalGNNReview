@@ -1,3 +1,4 @@
+from sympy import series
 import torch
 import math
 import csv
@@ -299,7 +300,9 @@ class MyDataset(Dataset):
         print(f"\n>>> Computing stock-level {self.normalize_method} normalization parameters for {self.dataset_type} dataset...")
         
         # Load all stock data
-        stock_data, _ = self._load_stock_data()
+        # FIX: Passiamo self.dates per usare solo i giorni di trading validi.
+        # Senza questo, pd.date_range include i weekend riempiti con 0, falsando media e std.
+        stock_data, _ = self._load_stock_data(all_dates=self.dates)
         
         # Dictionary to store normalization parameters for each feature of each stock
         print(f"Computing normalization parameters for {len(stock_data)} stocks...")
@@ -321,11 +324,18 @@ class MyDataset(Dataset):
                 if series.isna().all():
                     print(f"Warning: All values are NaN for {ticker} feature {col_name}. Skipping this feature.")
                     continue
+                 
+                series = df[col_name]
+                # Filtra via gli zeri prima di calcolare le statistiche!
+                valid_series = series[series != 0] 
+
+                if valid_series.empty:
+                    continue
                     
                 # Compute parameters based on normalization method
                 if self.normalize_method == 'zscore':
-                    mean = series.mean()
-                    std = series.std()
+                    mean = valid_series.mean()
+                    std = valid_series.std()
                     if std < 1e-5:  # Handle zero std case
                         std = 1.0
                     stock_params[str(col_idx)] = {'mean': mean, 'std': std}
@@ -505,15 +515,20 @@ class MyDataset(Dataset):
             d_path = self._get_ticker_filepath(ticker)
             df = pd.read_csv(d_path, parse_dates=[0], index_col=0)
             df.index = pd.to_datetime(df.index.date)
-            df_reindexed = df.reindex(dates_dt, fill_value=0)
-            features_df = df_reindexed.iloc[:, :5].astype(float)
 
-            # 🚀 Case 1: No normalization requested
+            df_reindexed = df.reindex(dates_dt)
+            df_reindexed = df_reindexed.ffill().bfill() #
+
+            
+            features_df = df_reindexed.iloc[:, :5].astype(float)
+            
             if not self.normalize_method or self.normalize_method.lower() in ['none', '']:
                 # Simply keep raw features
                 pass
+                
+                
 
-            # 🚀 Case 2: Normalization that requires precomputed parameters
+            #Case 2: Normalization that requires precomputed parameters
             elif normalize and (
                 self.normalize_method.lower() in ['zscore', 'minmax', 'robust', 'maxabs'] and
                 hasattr(self, 'norm_params') and 
@@ -607,4 +622,3 @@ class MyDataset(Dataset):
         probabilities = counts / total_counts
         entropy = -np.sum(probabilities * np.log(probabilities + 1e-9))
         return entropy
-    

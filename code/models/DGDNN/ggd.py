@@ -30,7 +30,10 @@ class GeneralizedGraphDiffusion(nn.Module):
         # Multiplying by 'a' ensures that connections not present in the original graph (or with zero weight)
         # are also zeroed out in the learned diffusion matrix, or that the learned diffusion is applied only
         # where there's an original connection (if 'a' is binary).
-        q = q * a      
+        
+        #q = q * a      
+        alpha = 1.0  # Hyperparameter
+        q = q * (1.0 + alpha * a)
         
         # Convert the diffusion matrix 'q' to sparse format for efficient matrix multiplication,
         # especially important for large graphs where 'q' might be sparse.                                 # [N, N]

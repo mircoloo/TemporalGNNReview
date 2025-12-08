@@ -75,6 +75,7 @@ class DARNNRunner(BaseModelRunner):
             train_all_logits = []
             train_batch_losses = []
             train_batch_improvements = []
+            epoch_grad_norms = []
             
             print(f"\n{'#'*80}")
             print(f"# EPOCH {epoch}/{num_epochs}")
@@ -102,16 +103,18 @@ class DARNNRunner(BaseModelRunner):
                 
                 loss.backward()
                 
-                # Check gradient norms before optimizer step
-                total_grad_norm = 0.0
-                num_params_with_grad = 0
+                # Debug gradients
+                total_norm = 0.0
                 for p in self.model.parameters():
                     if p.grad is not None:
                         param_norm = p.grad.data.norm(2)
-                        total_grad_norm += param_norm.item() ** 2
-                        num_params_with_grad += 1
-                total_grad_norm = total_grad_norm ** 0.5
+                        total_norm += param_norm.item() ** 2
+                total_norm = total_norm ** 0.5
+                epoch_grad_norms.append(total_norm)
                 
+                if batch_idx % 10 == 0:
+                    print(f"Batch {batch_idx} Grad Norm: {total_norm:.4f}")
+
                 optimizer.step()
 
                 current_batch_loss = loss.item()
@@ -124,40 +127,8 @@ class DARNNRunner(BaseModelRunner):
                     improvement = prev_batch_loss - current_batch_loss
                     train_batch_improvements.append(improvement)
                     
-                    # Report non-improving batches
-                    if improvement <= 0:
-                        if batch_idx % 10 == 0 or epoch < 3:  # More verbose in early epochs
-                            print(f"  ⚠️ Batch {batch_idx}: Loss NOT improving "
-                                  f"(prev: {prev_batch_loss:.6f}, curr: {current_batch_loss:.6f}, "
-                                  f"diff: {improvement:.6f}, grad_norm: {total_grad_norm:.6f})")
                 n_batches += 1
                 batch_idx += 1
-                
-                # Verbose logging for first few batches of early epochs
-                if epoch < 2 and batch_idx <= 5:
-                    print(f"  📊 Batch {batch_idx}: loss={current_batch_loss:.6f}, "
-                          f"grad_norm={total_grad_norm:.6f}, "
-                          f"output_range=[{outputs.min().item():.4f}, {outputs.max().item():.4f}]")
-                
-                # Debug first batch of first epoch
-                if epoch == 1 and n_batches == 1:
-                    print(f"\n🔬 FIRST BATCH DEBUG:")
-                    print(f"  Input X shape: {X.shape}")
-                    print(f"  y_target shape: {y_target.shape}")
-                    print(f"  Targets shape: {target.shape}")
-                    print(f"  Outputs shape: {outputs.shape}")
-                    print(f"  Sample outputs[:5]: {outputs.flatten()[:5].detach().cpu().numpy()}")
-                    print(f"  Sample targets[:5]: {target.flatten()[:5].detach().cpu().numpy()}")
-                    
-                    # Check if all outputs are the same
-                    outputs_flat = outputs.flatten().detach().cpu().numpy()
-                    print(f"  Output variance: {outputs_flat.var():.8f}")
-                    if outputs_flat.var() < 1e-6:
-                        print(f"  ⚠️ CRITICAL: All outputs are nearly identical!")
-                    
-                    # Check gradient flow
-                    print(f"  Gradient norm: {total_grad_norm:.6f}")
-                    print(f"  Params with gradients: {num_params_with_grad}")
                 
                 # Collect predictions for manual metrics
                 preds = (torch.round(torch.sigmoid(outputs))).int().cpu()
@@ -165,20 +136,9 @@ class DARNNRunner(BaseModelRunner):
                 train_all_targets.extend(target.int().cpu().flatten().tolist())
                 train_all_logits.extend(outputs.detach().cpu().flatten().tolist())
             
-            print(f"MANUAL BATCH ACC = {(batch_acc/n_batches):.4f}")
-            
-            # Batch improvement summary
-            if len(train_batch_improvements) > 0:
-                improving_batches = sum(1 for imp in train_batch_improvements if imp > 0)
-                worsening_batches = sum(1 for imp in train_batch_improvements if imp < 0)
-                stable_batches = len(train_batch_improvements) - improving_batches - worsening_batches
-                print(f"\n  📈 Batch Improvement Summary:")
-                print(f"    Improving batches: {improving_batches}/{len(train_batch_improvements)} "
-                      f"({100*improving_batches/len(train_batch_improvements):.1f}%)")
-                print(f"    Worsening batches: {worsening_batches}/{len(train_batch_improvements)} "
-                      f"({100*worsening_batches/len(train_batch_improvements):.1f}%)")
-                print(f"    Stable batches: {stable_batches}/{len(train_batch_improvements)} "
-                      f"({100*stable_batches/len(train_batch_improvements):.1f}%)")
+            # Save attention visualizations every 5 epochs
+            if epoch % 5 == 0:
+                self._save_attention_visualizations(epoch)
 
             avg_train_loss = train_loss / n_batches
             history['train_loss'].append(avg_train_loss)
@@ -187,15 +147,6 @@ class DARNNRunner(BaseModelRunner):
             epoch_improvement = prev_epoch_loss - avg_train_loss
             loss_improvement_history.append(epoch_improvement)
             
-            if epoch_improvement <= 0:
-                print(f"\n  ⚠️⚠️⚠️ EPOCH LOSS NOT IMPROVING ⚠️⚠️⚠️")
-                print(f"  Previous epoch loss: {prev_epoch_loss:.6f}")
-                print(f"  Current epoch loss:  {avg_train_loss:.6f}")
-                print(f"  Difference:          {epoch_improvement:.6f}")
-            else:
-                print(f"\n  ✅ Epoch improvement: {epoch_improvement:.6f} "
-                      f"(prev: {prev_epoch_loss:.6f} → curr: {avg_train_loss:.6f})")
-            
             prev_epoch_loss = avg_train_loss
             
             # Calculate training metrics manually
@@ -203,6 +154,22 @@ class DARNNRunner(BaseModelRunner):
             train_all_targets = np.array(train_all_targets)
             train_all_logits = np.array(train_all_logits)
             
+            # Gradient Analysis Summary
+            if len(epoch_grad_norms) > 0:
+                grad_mean = np.mean(epoch_grad_norms)
+                grad_std = np.std(epoch_grad_norms)
+                grad_max = np.max(epoch_grad_norms)
+                grad_min = np.min(epoch_grad_norms)
+                print(f"  Gradient Norms: Mean={grad_mean:.4f}, Std={grad_std:.4f}, Min={grad_min:.4f}, Max={grad_max:.4f}")
+                
+                if grad_max > 100:
+                    print("  ⚠️ WARNING: Exploding gradients detected!")
+                if grad_mean < 1e-4:
+                    print("  ⚠️ WARNING: Vanishing gradients detected!")
+            
+            if epoch % 5 == 0:
+                self._save_attention_visualizations(epoch)
+
             train_metrics = {
                 'acc': accuracy_score(train_all_targets, train_all_preds),
                 'prec': precision_score(train_all_targets, train_all_preds, zero_division=0),
@@ -220,79 +187,6 @@ class DARNNRunner(BaseModelRunner):
             
             # Get num_nodes from data shape
             num_nodes = target.shape[-1] if len(target.shape) > 1 else len(target)
-            
-            # Print training debug info
-            print(f"\n{'='*80}")
-            print(f"TRAINING DEBUG - Epoch {epoch}/{num_epochs}")
-            print(f"{'='*80}")
-            print(f"📉 LOSS STATISTICS:")
-            print(f"  Train Loss (avg): {avg_train_loss:.6f}")
-            print(f"  Train Loss (min batch): {min(train_batch_losses):.6f}")
-            print(f"  Train Loss (max batch): {max(train_batch_losses):.6f}")
-            print(f"  Train Loss (std): {np.std(train_batch_losses):.6f}")
-            
-            # Loss distribution analysis
-            loss_quartiles = np.percentile(train_batch_losses, [25, 50, 75])
-            print(f"  Loss quartiles [Q1, Q2, Q3]: [{loss_quartiles[0]:.6f}, {loss_quartiles[1]:.6f}, {loss_quartiles[2]:.6f}]")
-            
-            # Identify problematic batches
-            high_loss_threshold = avg_train_loss + 2 * np.std(train_batch_losses)
-            high_loss_batches = [i for i, loss in enumerate(train_batch_losses) if loss > high_loss_threshold]
-            if len(high_loss_batches) > 0:
-                print(f"  ⚠️ High loss batches (>{high_loss_threshold:.6f}): {len(high_loss_batches)} batches")
-                print(f"    Batch indices: {high_loss_batches[:10]}{'...' if len(high_loss_batches) > 10 else ''}")
-            
-            print(f"\n🔍 LOGITS ANALYSIS:")
-            print(f"  Logits - Min: {train_all_logits.min():.4f}, Max: {train_all_logits.max():.4f}, "
-                  f"Mean: {train_all_logits.mean():.4f}, Std: {train_all_logits.std():.4f}")
-            
-            # Check if logits are all the same (CRITICAL ISSUE)
-            unique_logits = np.unique(np.round(train_all_logits, 4))
-            print(f"  Unique logit values (rounded to 4 decimals): {len(unique_logits)}")
-            if len(unique_logits) < 10:
-                print(f"  ⚠️ WARNING: Very few unique logit values! {unique_logits[:10]}")
-            
-            # Check variance across different stocks/nodes
-            train_all_logits_reshaped = np.array(train_all_logits).reshape(-1, num_nodes)
-            per_node_variance = train_all_logits_reshaped.var(axis=0)
-            per_node_mean = train_all_logits_reshaped.mean(axis=0)
-            print(f"  Per-node variance - Mean: {per_node_variance.mean():.6f}, "
-                  f"Min: {per_node_variance.min():.6f}, Max: {per_node_variance.max():.6f}")
-            print(f"  Per-node mean - Mean: {per_node_mean.mean():.6f}, "
-                  f"Min: {per_node_mean.min():.6f}, Max: {per_node_mean.max():.6f}")
-            print(f"  Nodes with zero variance: {np.sum(per_node_variance < 1e-6)}/{num_nodes}")
-            
-            # Check if nodes have different means
-            nodes_with_same_mean = np.sum(np.abs(per_node_mean - per_node_mean.mean()) < 1e-4)
-            if nodes_with_same_mean > num_nodes * 0.9:
-                print(f"  ⚠️ CRITICAL: {nodes_with_same_mean}/{num_nodes} nodes have nearly identical means!")
-            
-            print(f"\n📊 PREDICTIONS ANALYSIS:")
-            print(f"  Sample logits (first 20): {train_all_logits[:20]}")
-            print(f"  Sample targets (first 20): {train_all_targets[:20]}")
-            print(f"  Sample preds (first 20): {train_all_preds[:20]}")
-            
-            # Check if all predictions are the same
-            unique_preds = np.unique(train_all_preds)
-            print(f"  Unique predictions: {unique_preds}")
-            if len(unique_preds) == 1:
-                print(f"  ⚠️ CRITICAL: Model always predicts class {unique_preds[0]}!")
-            
-            print(f"\n📈 METRICS:")
-            print(f"  Manual Train Accuracy: {train_metrics['acc']:.4f}")
-            print(f"  Class distribution - Targets: {np.bincount(train_all_targets.astype(int))}")
-            print(f"  Class distribution - Preds: {np.bincount(train_all_preds.astype(int))}")
-            
-            # Check gradient flow
-            print(f"\n🔧 MODEL PARAMETERS:")
-            total_params = sum(p.numel() for p in self.model.parameters())
-            trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-            print(f"  Total parameters: {total_params}, Trainable: {trainable_params}")
-            
-            # Check if parameters are updating
-            has_grad = sum(1 for p in self.model.parameters() if p.grad is not None)
-            total_model_params = sum(1 for _ in self.model.parameters())
-            print(f"  Parameters with gradients: {has_grad}/{total_model_params}")
             
             # Validation every 5 epochs
             if (epoch % 5 == 0):
@@ -599,7 +493,7 @@ class DARNNRunner(BaseModelRunner):
         print(f"\n✓ Training plots saved to: {save_dir}")
 
     @evaluate_decorator
-    def test(self, test_dataset):
+    def test(self, test_dataset, save_attention=False):
         test_dataset = DARNNDataset(test_dataset)  
         test_loader = DataLoader(test_dataset, batch_size=1)
         self.model.eval()
@@ -607,16 +501,86 @@ class DARNNRunner(BaseModelRunner):
         all_labels = []
         
         with torch.no_grad():
-            for batch in test_loader:
-                X, y_target, target = batch  # Assuming your dataset returns (x, y)
-                
-                # Move batch to device
+            for i, batch in enumerate(test_loader):
+                X, y_target, target = batch
                 X = X.to(self.device)
                 y_target = y_target.to(self.device)
                 target = target.to(self.device)
+                
                 outputs = self.model(X, y_target)
                 preds = (torch.round(torch.sigmoid(outputs))).int().cpu()
                 all_preds.extend(preds.flatten().tolist())
-                all_labels.extend(target.cpu().flatten().tolist())
+                all_labels.extend(target.int().cpu().flatten().tolist())
+                
+                if save_attention and i == 0:
+                    self._save_attention_visualizations('test_final')
 
         return {'preds': np.array(all_preds), 'targets': np.array(all_labels)}
+    
+    def _save_attention_visualizations(self, epoch_or_tag):
+        """Save attention visualizations for DARNN"""
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        from pathlib import Path
+        
+        # Handle both int epoch and string tag
+        if isinstance(epoch_or_tag, int):
+            folder_name = f'epoch_{epoch_or_tag}'
+            title_suffix = f'Epoch {epoch_or_tag}'
+        else:
+            folder_name = str(epoch_or_tag)
+            title_suffix = str(epoch_or_tag)
+            
+        save_dir = Path('training_plots') / 'DARNN' / 'attention' / folder_name
+        save_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 1. Input Attention (Encoder)
+        # self.model.encoder.input_attention_weights is a list of tensors [batch_size, N] for each timestep T
+        if hasattr(self.model.encoder, 'input_attention_weights') and self.model.encoder.input_attention_weights:
+            # Stack to get [T, batch_size, N]
+            input_attn = torch.stack(self.model.encoder.input_attention_weights)
+            # Permute to [batch_size, T, N]
+            input_attn = input_attn.permute(1, 0, 2)
+            # Take first sample in batch: [T, N]
+            attn_map = input_attn[0].numpy()
+            
+            plt.figure(figsize=(12, 8))
+            sns.heatmap(attn_map.T, cmap='viridis', annot=False) # Transpose to have N on y-axis, T on x-axis
+            plt.title(f'Input Attention (Encoder) - {title_suffix}')
+            plt.xlabel('Time Step')
+            plt.ylabel('Stock / Series')
+            plt.tight_layout()
+            plt.savefig(save_dir / 'input_attention.png')
+            plt.close()
+            
+        # 2. Temporal Attention (Decoder)
+        # self.model.decoders is a ModuleList. We can visualize a few of them.
+        num_stocks_to_viz = min(5, len(self.model.decoders))
+        
+        for i in range(num_stocks_to_viz):
+            decoder = self.model.decoders[i]
+            if hasattr(decoder, 'temporal_attention_weights') and decoder.temporal_attention_weights:
+                try:
+                    # Stack to get [T, batch_size, M] (M is encoder hidden size)
+                    temp_attn = torch.stack(decoder.temporal_attention_weights)
+                    
+                    # Fix: Handle 4D tensor case (e.g. [T, Batch, 1, M])
+                    if temp_attn.dim() == 4:
+                        temp_attn = temp_attn.squeeze(2)
+                        
+                    # Permute to [batch_size, T, M]
+                    temp_attn = temp_attn.permute(1, 0, 2)
+                    # Take first sample: [T, M]
+                    attn_map = temp_attn[0].detach().cpu().numpy()
+                    
+                    plt.figure(figsize=(10, 8))
+                    sns.heatmap(attn_map.T, cmap='viridis', annot=False)
+                    plt.title(f'Temporal Attention (Decoder Stock {i}) - {title_suffix}')
+                    plt.xlabel('Time Step')
+                    plt.ylabel('Encoder Hidden State')
+                    plt.tight_layout()
+                    plt.savefig(save_dir / f'temporal_attention_stock_{i}.png')
+                    plt.close()
+                except Exception as e:
+                    print(f"Failed to plot temporal attention for stock {i}: {e}")
+                    plt.close()

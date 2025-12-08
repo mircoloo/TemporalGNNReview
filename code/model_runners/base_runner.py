@@ -54,6 +54,20 @@ def evaluate_decorator(func):
                     f1 = f1_score(targets, preds, zero_division=0)
                     mcc = matthews_corrcoef(targets, preds)
                     
+                    # Calculate Directional Accuracy
+                    # For binary classification where 1=up and 0=down
+                    # Directional accuracy = (TP + TN) / Total (same as regular accuracy)
+                    # But we also compute it separately for up and down movements
+                    dir_acc_total = acc  # Total directional accuracy (same as accuracy for binary)
+                    
+                    # Directional accuracy for upward movements (when target = 1)
+                    up_mask = targets == 1
+                    dir_acc_up = accuracy_score(targets[up_mask], preds[up_mask]) if up_mask.sum() > 0 else 0.0
+                    
+                    # Directional accuracy for downward movements (when target = 0)
+                    down_mask = targets == 0
+                    dir_acc_down = accuracy_score(targets[down_mask], preds[down_mask]) if down_mask.sum() > 0 else 0.0
+                    
                     # Generate confusion matrix
                     cm = confusion_matrix(targets, preds)
                     
@@ -73,6 +87,9 @@ def evaluate_decorator(func):
                     headers = ["Metric", "Value"]
                     metrics_data = [
                         ["Accuracy", f"{acc:.4f}"],
+                        ["Directional Accuracy (Total)", f"{dir_acc_total:.4f}"],
+                        ["Directional Accuracy (Up)", f"{dir_acc_up:.4f}"],
+                        ["Directional Accuracy (Down)", f"{dir_acc_down:.4f}"],
                         ["Precision", f"{prec:.4f}"],
                         ["Recall", f"{rec:.4f}"],
                         ["F1 Score", f"{f1:.4f}"],
@@ -103,6 +120,9 @@ def evaluate_decorator(func):
                     # Update results with metrics
                     results.update({
                         'accuracy': acc,
+                        'directional_accuracy': dir_acc_total,
+                        'directional_accuracy_up': dir_acc_up,
+                        'directional_accuracy_down': dir_acc_down,
                         'precision': prec,
                         'recall': rec,
                         'f1': f1,

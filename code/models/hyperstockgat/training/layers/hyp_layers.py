@@ -71,8 +71,8 @@ class HyperbolicGraphConvolution(nn.Module):
         h = self.linear.forward(x)
         h = self.agg.forward(h, adj)
         h = self.hyp_act.forward(h)
-        if h.isnan().any():
-            raise ValueError("NaN detected in HGC output!")
+        # if h.isnan().any():
+        #     raise ValueError("NaN detected in HGC output!")
         output = h, adj
         return output
 

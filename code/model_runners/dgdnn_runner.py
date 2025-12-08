@@ -9,6 +9,7 @@ from model_runners.base_runner import evaluate_decorator, BaseModelRunner
 from model_runners.models_dataset import DGDNNDataset
 import matplotlib.pyplot as plt
 import json
+from torch_geometric.loader import DataLoader
 
 class DGDNNRunner(BaseModelRunner):
 
@@ -25,8 +26,8 @@ class DGDNNRunner(BaseModelRunner):
               window_size, num_nodes, 
               batch_size=32, 
               use_validation=True,
-              early_stopping_patience=50,
-              early_stopping_metric='loss',
+              early_stopping_patience=20,
+              early_stopping_metric='mcc',
               early_stopping_min_delta=1e-4,
               plot_dir='training_plots'):
         """
@@ -82,6 +83,17 @@ class DGDNNRunner(BaseModelRunner):
         # Update training loop to handle None batches
         for epoch in range(num_epochs + 1):
             self.model.train()
+            
+            # Enable visualization saving periodically (e.g., every 5 epochs)
+            if epoch % 5 == 0:
+                save_dir_attn = Path(plot_dir) / 'DGDNN' / 'attention' / f'epoch_{epoch}'
+                save_dir_diff = Path(plot_dir) / 'DGDNN' / 'diffusion' / f'epoch_{epoch}'
+                self.model.enable_attention_saving(save_dir=str(save_dir_attn), max_saves=1)
+                self.model.enable_diffusion_saving(save_dir=str(save_dir_diff), max_saves=1)
+            else:
+                self.model.disable_attention_saving()
+                self.model.disable_diffusion_saving()
+                
             train_loss = 0.0
             n_train = 0
             
@@ -91,6 +103,7 @@ class DGDNNRunner(BaseModelRunner):
             train_all_logits = []
             train_batch_losses = []
             train_batch_improvements = []
+            epoch_grad_norms = []
             
             print(f"\n{'#'*80}")
             print(f"# EPOCH {epoch+1}/{num_epochs}")
@@ -119,6 +132,19 @@ class DGDNNRunner(BaseModelRunner):
                 loss = criterion(outputs, targets) + theta_regularizer(self.model.theta) - alpha * neighbor_distance_regularizer(self.model.theta)
                 
                 loss.backward()
+                
+                # Gradient monitoring
+                total_norm = 0.0
+                for p in self.model.parameters():
+                    if p.grad is not None:
+                        param_norm = p.grad.data.norm(2)
+                        total_norm += param_norm.item() ** 2
+                total_norm = total_norm ** 0.5
+                epoch_grad_norms.append(total_norm)
+
+                if n_train % 10 == 0:
+                    print(f"Batch {n_train} Grad Norm: {total_norm:.4f}")
+
                 optimizer.step()
                 
                 current_batch_loss = loss.item()
@@ -139,6 +165,19 @@ class DGDNNRunner(BaseModelRunner):
                 train_all_targets.extend(targets.int().cpu().flatten().tolist())
                 train_all_logits.extend(outputs.detach().cpu().flatten().tolist())
 
+
+            # Gradient Analysis
+            if epoch_grad_norms:
+                grad_mean = np.mean(epoch_grad_norms)
+                grad_std = np.std(epoch_grad_norms)
+                grad_max = np.max(epoch_grad_norms)
+                grad_min = np.min(epoch_grad_norms)
+                print(f"Gradient Stats - Mean: {grad_mean:.4f}, Std: {grad_std:.4f}, Min: {grad_min:.4f}, Max: {grad_max:.4f}")
+                
+                if grad_max > 100:
+                    print("WARNING: Exploding gradients detected!")
+                if grad_mean < 1e-4:
+                    print("WARNING: Vanishing gradients detected!")
 
             # Training metrics
             avg_train_loss = train_loss / n_train if n_train > 0 else 0.0
@@ -161,6 +200,18 @@ class DGDNNRunner(BaseModelRunner):
                 'f1': f1_score(train_all_targets, train_all_preds, zero_division=0),
                 'mcc': matthews_corrcoef(train_all_targets, train_all_preds)
             }
+            
+            # Calculate directional accuracy for training
+            up_mask_train = train_all_targets == 1
+            down_mask_train = train_all_targets == 0
+            train_metrics['dir_acc_up'] = accuracy_score(
+                train_all_targets[up_mask_train], 
+                train_all_preds[up_mask_train]
+            ) if up_mask_train.sum() > 0 else 0.0
+            train_metrics['dir_acc_down'] = accuracy_score(
+                train_all_targets[down_mask_train], 
+                train_all_preds[down_mask_train]
+            ) if down_mask_train.sum() > 0 else 0.0
             
             # Store training metrics in history
             history['train_acc'].append(train_metrics['acc'])
@@ -243,6 +294,18 @@ class DGDNNRunner(BaseModelRunner):
                         'mcc': matthews_corrcoef(val_all_targets, val_all_preds)
                     }
                     
+                    # Calculate directional accuracy for validation
+                    up_mask_val = val_all_targets == 1
+                    down_mask_val = val_all_targets == 0
+                    manual_val_metrics['dir_acc_up'] = accuracy_score(
+                        val_all_targets[up_mask_val], 
+                        val_all_preds[up_mask_val]
+                    ) if up_mask_val.sum() > 0 else 0.0
+                    manual_val_metrics['dir_acc_down'] = accuracy_score(
+                        val_all_targets[down_mask_val], 
+                        val_all_preds[down_mask_val]
+                    ) if down_mask_val.sum() > 0 else 0.0
+                    
                     # Store metrics for plotting (using manual metrics for validation)
                     history['val_loss'].append(val_metrics['loss'])
                     history['val_acc'].append(manual_val_metrics['acc'])
@@ -279,6 +342,8 @@ class DGDNNRunner(BaseModelRunner):
                         table_data = [
                             ["Loss", f"{avg_train_loss:.4f}", f"{val_metrics['loss']:.4f}"],
                             ["Accuracy", f"{train_metrics['acc']:.4f}", f"{manual_val_metrics['acc']:.4f}"],
+                            ["Dir. Acc (Up)", f"{train_metrics['dir_acc_up']:.4f}", f"{manual_val_metrics['dir_acc_up']:.4f}"],
+                            ["Dir. Acc (Down)", f"{train_metrics['dir_acc_down']:.4f}", f"{manual_val_metrics['dir_acc_down']:.4f}"],
                             ["Precision", f"{train_metrics['prec']:.4f}", f"{manual_val_metrics['prec']:.4f}"],
                             ["Recall", f"{train_metrics['rec']:.4f}", f"{manual_val_metrics['rec']:.4f}"],
                             ["F1 Score", f"{train_metrics['f1']:.4f}", f"{manual_val_metrics['f1']:.4f}"],
@@ -447,7 +512,25 @@ class DGDNNRunner(BaseModelRunner):
     
     
     @evaluate_decorator
-    def test(self, test_dataset, window_size, num_nodes, batch_size=1):
+    def test(self, test_dataset, window_size, num_nodes, batch_size=1, 
+             save_attention=False, attention_save_dir='dgdnn_attention_outputs', max_saves=50):
+        """
+        Test the DGDNN model
+        
+        Args:
+            save_attention: Whether to save attention visualizations during forward passes
+            attention_save_dir: Directory to save attention outputs
+            max_saves: Maximum number of forward passes to save attention for
+        """
+        # Enable attention saving if requested
+        if save_attention:
+            self.model.enable_attention_saving(
+                save_dir=attention_save_dir,
+                max_saves=max_saves
+            )
+            
+        self.model.enable_diffusion_saving('dgdnn_diffusion_outputs', max_saves=30)
+        
         test_dataset = DGDNNDataset(test_dataset)  
         test_loader = DataLoader(test_dataset, batch_size=batch_size)
         self.model.eval()
@@ -470,8 +553,105 @@ class DGDNNRunner(BaseModelRunner):
                 preds = (torch.sigmoid(outputs) > 0.5).int().cpu()
                 all_preds.extend(preds.flatten().tolist())
                 all_labels.extend(batch.y.cpu().flatten().tolist())
+        
+        # Disable attention saving after test
+        if save_attention:
+            self.model.disable_attention_saving()
+            print(f"\n✓ Saved attention for {self.model.forward_pass_counter} forward passes to {attention_save_dir}")
 
         return {'preds': np.array(all_preds), 'targets': np.array(all_labels)}
+    
+    def visualize_attention(self, test_dataset, window_size, num_nodes, 
+                           stock_names=None, num_samples=5,
+                           output_dir='dgdnn_attention_vis'):
+        """
+        Visualize attention mechanisms for DGDNN model
+        
+        Args:
+            test_dataset: Test dataset
+            window_size: Window size used in training
+            num_nodes: Number of nodes/stocks
+            stock_names: List of stock ticker names (optional)
+            num_samples: Number of samples to visualize
+            output_dir: Directory to save visualizations
+        """
+        from models.DGDNN.attention_visualizer import DGDNNAttentionVisualizer
+        from pathlib import Path
+        
+        print(f"\n{'='*80}")
+        print(f"DGDNN Attention Visualization")
+        print(f"{'='*80}\n")
+        
+        # Create visualizer
+        visualizer = DGDNNAttentionVisualizer(self.model, device=self.device)
+        
+        # Create output directory
+        output_path = Path(output_dir) / self.market_name
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        test_set = DGDNNDataset(test_dataset)
+        
+        # Visualize multiple samples
+        for sample_idx in range(min(num_samples, len(test_set))):
+            print(f"\nProcessing sample {sample_idx + 1}/{num_samples}...")
+            
+            batch = test_set[sample_idx]
+            
+            if batch.x.shape[-1] != 5 * window_size:
+                continue
+            
+            # Prepare inputs
+            X = batch.x.view(1, num_nodes, 5 * window_size)  # Add batch dim
+            A = to_dense_adj(
+                batch.edge_index,
+                edge_attr=batch.edge_attr,
+                max_num_nodes=num_nodes
+            ).unsqueeze(0)  # Add batch dim
+            
+            # Move to device
+            X = X.to(self.device)
+            A = A.to(self.device)
+            
+            # Create sample-specific output directory
+            sample_dir = output_path / f'sample_{sample_idx}'
+            sample_dir.mkdir(exist_ok=True)
+            
+            # Extract attention weights
+            visualizer.extract_attention_weights(X, A, stock_names=stock_names)
+            
+            # Generate visualizations
+            print(f"  - Generating theta weights plot...")
+            visualizer.plot_theta_weights(
+                save_path=sample_dir / 'theta_weights.png'
+            )
+            
+            num_layers = visualizer.attention_weights['num_layers']
+            num_heads = visualizer.attention_weights['num_heads']
+            
+            for layer_idx in range(num_layers):
+                print(f"  - Layer {layer_idx}...")
+                
+                # All heads
+                visualizer.plot_all_heads(
+                    layer_idx=layer_idx,
+                    save_path=sample_dir / f'layer_{layer_idx}_all_heads.png'
+                )
+                
+                # Statistics
+                visualizer.plot_attention_statistics(
+                    layer_idx=layer_idx,
+                    save_path=sample_dir / f'layer_{layer_idx}_statistics.png'
+                )
+                
+                # First head heatmap
+                visualizer.plot_attention_heatmap(
+                    layer_idx=layer_idx, 
+                    head_idx=0,
+                    save_path=sample_dir / f'layer_{layer_idx}_head_0_heatmap.png'
+                )
+        
+        print(f"\n✓ Attention visualizations saved to {output_path}")
+        print(f"{'='*80}\n")
 
 # Define optimizer and objective function
 def theta_regularizer(theta):

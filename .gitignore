@@ -11,6 +11,7 @@ token
 # OS-specific
 .DS_Store
 Thumbs.db
+*.md
 
 # IDE
 .vscode/
@@ -39,8 +40,13 @@ Thumbs.db
 *submit_more_jobs.sh*
 submit_more_jobs.sh
 *hyper-stockgat-www*
-
-
+/dgdnn_diffusion_outputs/
+/dgdnn_attention_outputs/
+/code/analysis_results
+/code/dgdnn_attention_outputs
+/code/dgdnn_diffusion_outputs
+*.tex
+/code/training_plots
 # Other
 todo.txt
 code/models/hyperstockgat/preprocess/NASDAQ_industry_relation.npy
